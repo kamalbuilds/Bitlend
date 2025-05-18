@@ -8,17 +8,18 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title BitLendBridge
- * @dev Interface for exSat's native bridge to convert BTC to XBTC and vice versa.
- * This contract integrates directly with exSat's bridge for secure asset transfer.
+ * @dev Interface with exSat's custodian bridge system for BTC to XBTC transfers
+ * This contract interacts with exSat's bridge for secure asset transfers between Bitcoin and exSat
+ * Based on the exSat bridge documentation: https://docs.exsat.network/developer-guides/custodian-bridge-for-btc
  */
 contract BitLendBridge is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // XBTC token on exSat network
-    IERC20 public xbtcToken;
+    // Constants
+    address public constant EXSAT_BRIDGE_ADDRESS = 0xbbbbbbbbbbbbbbbbbbbbbbbb3d6f4ef81dc1b200; // Reserved address of bproxy.xsat
     
-    // exSat bridge address
-    address public exsatBridge;
+    // XBTC token on exSat network (mainnet address from docs)
+    IERC20 public xbtcToken = IERC20(0x4aa4365da82ACD46e378A6f3c92a863f3e763d34);
     
     // Required confirmations for Bitcoin transactions
     uint256 public requiredBtcConfirmations = 6;
@@ -29,170 +30,86 @@ contract BitLendBridge is Ownable, ReentrancyGuard {
     // Address to collect fees
     address public feeCollector;
     
-    // Mapping to track pending deposits
-    mapping(bytes32 => PendingDeposit) public pendingDeposits;
-    
-    // Mapping to track pending withdrawals
-    mapping(bytes32 => PendingWithdrawal) public pendingWithdrawals;
-    
-    // Structs for pending operations
-    struct PendingDeposit {
-        address user;
-        uint256 amount;
-        uint256 timestamp;
-        bool processed;
-    }
-    
-    struct PendingWithdrawal {
-        address user;
-        uint256 amount;
-        string btcAddress;
-        uint256 timestamp;
-        bool processed;
-    }
+    // BTC address management
+    mapping(address => string) public userBtcAddresses;
+    mapping(string => address) public btcToEvmAddressMapping;
     
     // Events
-    event DepositInitiated(address indexed user, bytes32 indexed depositId, uint256 amount);
-    event DepositProcessed(address indexed user, bytes32 indexed depositId, uint256 amount);
-    event WithdrawalInitiated(address indexed user, bytes32 indexed withdrawalId, uint256 amount, string btcAddress);
-    event WithdrawalProcessed(address indexed user, bytes32 indexed withdrawalId, uint256 amount, string btcAddress);
-    event BridgeAddressUpdated(address indexed oldBridge, address indexed newBridge);
-    event RequiredConfirmationsUpdated(uint256 oldConfirmations, uint256 newConfirmations);
+    event DepositAddressCreated(address indexed evmAddress, string btcAddress);
+    event BtcDeposited(address indexed evmAddress, string btcAddress, uint256 amount);
+    event WithdrawalInitiated(address indexed user, uint256 amount, string btcAddress, string gasLevel);
     event WithdrawalFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
     event FeeCollectorUpdated(address indexed oldCollector, address indexed newCollector);
-    
-    /**
-     * @dev Interface for exSat's bridge contract
-     * Based on the actual exSat bridge implementation
-     */
-    interface IExSatBridge {
-        enum Operation { Nop, Mint, Burn, CrosschainRequest, CrosschainConfirm }
-        enum Status { Unused, Pending, Confirmed, Canceled }
-        
-        struct Request {
-            Operation op;
-            Status status;
-            uint128 nonce;
-            bytes32 srcChain;
-            bytes srcAddress;
-            bytes32 dstChain;
-            bytes dstAddress;
-            uint256 amount;
-            uint256 fee;
-            bytes extra;
-        }
-
-        // Request XBTC issuance by providing BTC
-        function deposit(address recipient) external payable returns (bytes32);
-        
-        // Request BTC withdrawal by burning XBTC
-        function withdraw(uint256 amount, string calldata btcAddress) external returns (bytes32);
-        
-        // Check if a BTC deposit has been completed
-        function getDepositStatus(bytes32 depositId) external view returns (uint8 status, uint256 confirmations);
-        
-        // Check if a BTC withdrawal has been completed
-        function getWithdrawalStatus(bytes32 withdrawalId) external view returns (uint8 status, uint256 confirmations);
-        
-        // Get request details by hash
-        function getRequestByHash(bytes32 requestHash) external view returns (Request memory);
-        
-        // Check if a deposit transaction has been used
-        function usedDepositTxs(bytes32 txKey) external view returns (bytes32);
-        
-        // Check if a withdrawal transaction has been used
-        function usedWithdrawalTxs(bytes32 txKey) external view returns (bytes32);
-    }
+    event XbtcTokenUpdated(address indexed oldToken, address indexed newToken);
     
     /**
      * @dev Constructor initializes the bridge with required addresses
-     * @param _xbtcToken XBTC token address
-     * @param _exsatBridge exSat bridge contract address
      * @param _feeCollector Address to collect fees
      */
-    constructor(
-        address _xbtcToken,
-        address _exsatBridge,
-        address _feeCollector
-    ) Ownable(msg.sender) {
-        require(_xbtcToken != address(0), "XBTC token cannot be zero address");
-        require(_exsatBridge != address(0), "exSat bridge cannot be zero address");
+    constructor(address _feeCollector) Ownable(msg.sender) {
         require(_feeCollector != address(0), "Fee collector cannot be zero address");
-        
-        xbtcToken = IERC20(_xbtcToken);
-        exsatBridge = _exsatBridge;
         feeCollector = _feeCollector;
     }
     
     /**
-     * @dev Deposit BTC to receive XBTC
-     * This forwards the ETH value to exSat's bridge contract
-     * @return depositId Unique identifier for tracking the deposit
+     * @dev Register a BTC deposit address for a user
+     * Note: In production, this would be replaced by a backend call to generate deposit addresses
+     * @param evmAddress The EVM address to link to the BTC address
+     * @param btcAddress The Bitcoin address for deposits
      */
-    function deposit() external payable nonReentrant returns (bytes32) {
-        require(msg.value > 0, "Amount must be greater than 0");
+    function registerBtcAddress(address evmAddress, string calldata btcAddress) external onlyOwner {
+        require(evmAddress != address(0), "Invalid EVM address");
+        require(bytes(btcAddress).length > 0, "Invalid BTC address");
         
-        // Generate deposit ID based on user, amount, and timestamp
-        bytes32 depositId = keccak256(abi.encodePacked(msg.sender, msg.value, block.timestamp));
+        userBtcAddresses[evmAddress] = btcAddress;
+        btcToEvmAddressMapping[btcAddress] = evmAddress;
         
-        // Store pending deposit information
-        pendingDeposits[depositId] = PendingDeposit({
-            user: msg.sender,
-            amount: msg.value,
-            timestamp: block.timestamp,
-            processed: false
-        });
-        
-        // Call exSat bridge to process the deposit
-        IExSatBridge bridge = IExSatBridge(exsatBridge);
-        bytes32 bridgeDepositId = bridge.deposit{value: msg.value}(address(this));
-        
-        emit DepositInitiated(msg.sender, depositId, msg.value);
-        
-        return depositId;
+        emit DepositAddressCreated(evmAddress, btcAddress);
     }
     
     /**
-     * @dev Process a completed deposit
-     * @param depositId ID of the deposit to process
-     * @return success Whether the processing was successful
+     * @dev Get the Bitcoin deposit address for a user
+     * @param user EVM address of the user
+     * @return The user's Bitcoin deposit address
      */
-    function processDeposit(bytes32 depositId) external nonReentrant returns (bool) {
-        PendingDeposit storage pendingDeposit = pendingDeposits[depositId];
-        require(pendingDeposit.user != address(0), "Deposit not found");
-        require(!pendingDeposit.processed, "Deposit already processed");
+    function getUserBtcAddress(address user) external view returns (string memory) {
+        string memory btcAddress = userBtcAddresses[user];
+        require(bytes(btcAddress).length > 0, "No BTC address registered for user");
+        return btcAddress;
+    }
+    
+    /**
+     * @dev Simulate a BTC deposit notification
+     * Note: In production, this would be handled by the exSat bridge system automatically
+     * @param btcAddress The Bitcoin address receiving the deposit
+     * @param amount Amount of BTC deposited (in satoshis)
+     */
+    function notifyBtcDeposit(string calldata btcAddress, uint256 amount) external onlyOwner {
+        address evmAddress = btcToEvmAddressMapping[btcAddress];
+        require(evmAddress != address(0), "Unknown BTC address");
         
-        // Check deposit status
-        IExSatBridge bridge = IExSatBridge(exsatBridge);
-        (uint8 status, uint256 confirmations) = bridge.getDepositStatus(depositId);
+        // In production, the actual XBTC minting is handled by the exSat bridge
+        // This is just a simulation for the hackathon/demo
+        xbtcToken.safeTransfer(evmAddress, amount);
         
-        // Require confirmed status (Status.Confirmed = 2)
-        require(status == 2, "Deposit not confirmed"); // 2 = Confirmed
-        require(confirmations >= requiredBtcConfirmations, "Insufficient confirmations");
-        
-        // Mark as processed
-        pendingDeposit.processed = true;
-        
-        // Transfer XBTC to the user
-        // Note: In a real implementation, the XBTC would have been received by this contract from the bridge
-        // For now, we assume the XBTC is already in this contract
-        uint256 amount = pendingDeposit.amount; // In a real implementation, this would be the converted amount
-        xbtcToken.safeTransfer(pendingDeposit.user, amount);
-        
-        emit DepositProcessed(pendingDeposit.user, depositId, amount);
-        
-        return true;
+        emit BtcDeposited(evmAddress, btcAddress, amount);
     }
     
     /**
      * @dev Withdraw XBTC to receive BTC
+     * Based on exSat's bridge withdrawal process: send to bridge address with specific memo format
      * @param amount Amount of XBTC to withdraw
      * @param btcAddress Bitcoin address to receive BTC
-     * @return withdrawalId Unique identifier for tracking the withdrawal
+     * @param gasLevel Gas level for Bitcoin transaction ("slow" or "fast")
      */
-    function withdraw(uint256 amount, string calldata btcAddress) external nonReentrant returns (bytes32) {
+    function withdraw(uint256 amount, string calldata btcAddress, string calldata gasLevel) external nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
         require(bytes(btcAddress).length > 0, "Invalid BTC address");
+        require(
+            keccak256(abi.encodePacked(gasLevel)) == keccak256(abi.encodePacked("slow")) || 
+            keccak256(abi.encodePacked(gasLevel)) == keccak256(abi.encodePacked("fast")), 
+            "Gas level must be 'slow' or 'fast'"
+        );
         
         // Calculate fee amount
         uint256 feeAmount = (amount * withdrawalFeeBps) / 10000;
@@ -206,162 +123,39 @@ contract BitLendBridge is Ownable, ReentrancyGuard {
             xbtcToken.safeTransfer(feeCollector, feeAmount);
         }
         
-        // Generate withdrawal ID
-        bytes32 withdrawalId = keccak256(abi.encodePacked(msg.sender, amount, btcAddress, block.timestamp));
+        // Format memo according to exSat bridge requirements
+        // memo format: <permission_id>,<evm_address>,<btc_address>,<gas_level>
+        string memory memo = string(abi.encodePacked(
+            "1,", // permission_id = 1 for regular usage
+            _addressToString(msg.sender), // sender address
+            ",",
+            btcAddress,
+            ",",
+            gasLevel
+        ));
         
-        // Store pending withdrawal information
-        pendingWithdrawals[withdrawalId] = PendingWithdrawal({
-            user: msg.sender,
-            amount: netAmount,
-            btcAddress: btcAddress,
-            timestamp: block.timestamp,
-            processed: false
-        });
+        // Transfer XBTC to the bridge address with formatted memo
+        // In a real implementation, the memo would need to be passed as data in the transfer
+        // However, since exSat has a specific way to handle this via internal bridge mechanics,
+        // this is a simplified version for demonstration
+        xbtcToken.safeApprove(EXSAT_BRIDGE_ADDRESS, netAmount);
         
-        // Approve the exSat bridge to spend the XBTC
-        xbtcToken.safeApprove(exsatBridge, netAmount);
-        
-        // Call exSat bridge to process the withdrawal
-        IExSatBridge bridge = IExSatBridge(exsatBridge);
-        bytes32 bridgeWithdrawalId = bridge.withdraw(netAmount, btcAddress);
-        
-        emit WithdrawalInitiated(msg.sender, withdrawalId, netAmount, btcAddress);
-        
-        return withdrawalId;
+        // In a real implementation, this would trigger a cross-chain message to the exSat bridge
+        // But for demonstration purposes, we'll just emit an event with the withdrawal details
+        emit WithdrawalInitiated(msg.sender, netAmount, btcAddress, gasLevel);
     }
     
     /**
-     * @dev Process a completed withdrawal
-     * @param withdrawalId ID of the withdrawal to process
-     * @return success Whether the processing was successful
+     * @dev Update the XBTC token address
+     * @param _newToken New XBTC token address
      */
-    function processWithdrawal(bytes32 withdrawalId) external nonReentrant returns (bool) {
-        PendingWithdrawal storage pendingWithdrawal = pendingWithdrawals[withdrawalId];
-        require(pendingWithdrawal.user != address(0), "Withdrawal not found");
-        require(!pendingWithdrawal.processed, "Withdrawal already processed");
+    function updateXbtcToken(address _newToken) external onlyOwner {
+        require(_newToken != address(0), "New token cannot be zero address");
         
-        // Check withdrawal status
-        IExSatBridge bridge = IExSatBridge(exsatBridge);
-        (uint8 status, uint256 confirmations) = bridge.getWithdrawalStatus(withdrawalId);
+        address oldToken = address(xbtcToken);
+        xbtcToken = IERC20(_newToken);
         
-        // Require confirmed status (Status.Confirmed = 2)
-        require(status == 2, "Withdrawal not confirmed"); // 2 = Confirmed 
-        require(confirmations >= requiredBtcConfirmations, "Insufficient confirmations");
-        
-        // Mark as processed
-        pendingWithdrawal.processed = true;
-        
-        emit WithdrawalProcessed(
-            pendingWithdrawal.user,
-            withdrawalId,
-            pendingWithdrawal.amount,
-            pendingWithdrawal.btcAddress
-        );
-        
-        return true;
-    }
-    
-    /**
-     * @dev Get status of a deposit
-     * @param depositId ID of the deposit
-     * @return exists Whether the deposit exists
-     * @return user User who initiated the deposit
-     * @return amount Deposit amount
-     * @return timestamp Timestamp when the deposit was initiated
-     * @return processed Whether the deposit has been processed
-     * @return status Status from the bridge (0=Unused, 1=Pending, 2=Confirmed, 3=Canceled)
-     * @return confirmations Number of confirmations
-     */
-    function getDepositStatus(bytes32 depositId) external view returns (
-        bool exists,
-        address user,
-        uint256 amount,
-        uint256 timestamp,
-        bool processed,
-        uint8 status,
-        uint256 confirmations
-    ) {
-        PendingDeposit storage deposit = pendingDeposits[depositId];
-        
-        exists = deposit.user != address(0);
-        user = deposit.user;
-        amount = deposit.amount;
-        timestamp = deposit.timestamp;
-        processed = deposit.processed;
-        
-        // Get status from bridge
-        if (exists) {
-            IExSatBridge bridge = IExSatBridge(exsatBridge);
-            (status, confirmations) = bridge.getDepositStatus(depositId);
-        }
-        
-        return (exists, user, amount, timestamp, processed, status, confirmations);
-    }
-    
-    /**
-     * @dev Get status of a withdrawal
-     * @param withdrawalId ID of the withdrawal
-     * @return exists Whether the withdrawal exists
-     * @return user User who initiated the withdrawal
-     * @return amount Withdrawal amount
-     * @return btcAddress Bitcoin address for receiving BTC
-     * @return timestamp Timestamp when the withdrawal was initiated
-     * @return processed Whether the withdrawal has been processed
-     * @return status Status from the bridge (0=Unused, 1=Pending, 2=Confirmed, 3=Canceled)
-     * @return confirmations Number of confirmations
-     */
-    function getWithdrawalStatus(bytes32 withdrawalId) external view returns (
-        bool exists,
-        address user,
-        uint256 amount,
-        string memory btcAddress,
-        uint256 timestamp,
-        bool processed,
-        uint8 status,
-        uint256 confirmations
-    ) {
-        PendingWithdrawal storage withdrawal = pendingWithdrawals[withdrawalId];
-        
-        exists = withdrawal.user != address(0);
-        user = withdrawal.user;
-        amount = withdrawal.amount;
-        btcAddress = withdrawal.btcAddress;
-        timestamp = withdrawal.timestamp;
-        processed = withdrawal.processed;
-        
-        // Get status from bridge
-        if (exists) {
-            IExSatBridge bridge = IExSatBridge(exsatBridge);
-            (status, confirmations) = bridge.getWithdrawalStatus(withdrawalId);
-        }
-        
-        return (exists, user, amount, btcAddress, timestamp, processed, status, confirmations);
-    }
-    
-    /**
-     * @dev Update the exSat bridge address
-     * @param _newBridge New bridge address
-     */
-    function updateBridgeAddress(address _newBridge) external onlyOwner {
-        require(_newBridge != address(0), "Bridge cannot be zero address");
-        
-        address oldBridge = exsatBridge;
-        exsatBridge = _newBridge;
-        
-        emit BridgeAddressUpdated(oldBridge, _newBridge);
-    }
-    
-    /**
-     * @dev Update required Bitcoin confirmations
-     * @param _confirmations New confirmation count
-     */
-    function updateRequiredConfirmations(uint256 _confirmations) external onlyOwner {
-        require(_confirmations > 0, "Confirmations must be greater than 0");
-        
-        uint256 oldConfirmations = requiredBtcConfirmations;
-        requiredBtcConfirmations = _confirmations;
-        
-        emit RequiredConfirmationsUpdated(oldConfirmations, _confirmations);
+        emit XbtcTokenUpdated(oldToken, _newToken);
     }
     
     /**
@@ -388,5 +182,41 @@ contract BitLendBridge is Ownable, ReentrancyGuard {
         feeCollector = _feeCollector;
         
         emit FeeCollectorUpdated(oldCollector, _feeCollector);
+    }
+    
+    /**
+     * @dev Convert address to string
+     * @param addr Address to convert
+     * @return String representation of the address
+     */
+    function _addressToString(address addr) internal pure returns (string memory) {
+        bytes memory addressBytes = abi.encodePacked(addr);
+        bytes memory stringBytes = new bytes(42); // 0x + 40 characters
+        
+        stringBytes[0] = "0";
+        stringBytes[1] = "x";
+        
+        for (uint256 i = 0; i < 20; i++) {
+            uint8 leftNibble = uint8(addressBytes[i]) >> 4;
+            uint8 rightNibble = uint8(addressBytes[i]) & 0xf;
+            
+            stringBytes[2 + i * 2] = _byteToChar(leftNibble);
+            stringBytes[2 + i * 2 + 1] = _byteToChar(rightNibble);
+        }
+        
+        return string(stringBytes);
+    }
+    
+    /**
+     * @dev Convert byte to character
+     * @param b Byte to convert
+     * @return Character representation
+     */
+    function _byteToChar(uint8 b) internal pure returns (bytes1) {
+        if (b < 10) {
+            return bytes1(uint8(b) + 0x30);
+        } else {
+            return bytes1(uint8(b) + 0x57);
+        }
     }
 } 
