@@ -1,17 +1,9 @@
 # BitLend: Trustless BTC Lending Protocol on exSat
 
-![BitLend Logo](./frontend/public/images/logo.png)
-
 ## Project Overview
 
 BitLend is a permissionless lending protocol built on exSat Network that allows Bitcoin holders to collateralize their BTC to borrow stablecoins or XSAT tokens. The platform leverages exSat's UTXO data synchronization and EVM compatibility to create a seamless, trustless lending experience with transparent proof of reserves.
 
-## 🏆 Hackathon Submission
-
-This project is a submission for the Bitcoin Hackathon 2025, targeting the following challenge tracks:
-
-- **Best use of exSat** - $10,000 in Bitcoin prize
-- **Best use of Rebar Data** - $7,000 in Bitcoin prize
 
 ## 🔑 Key Features
 
@@ -60,6 +52,13 @@ We leverage Rebar Data for enhanced market insights and security:
 - **RebarAnalytics**: Shows market data and liquidation risks from Rebar
 - **ProofOfReserves**: Visual verification of collateral using UTXO data
 
+## 🏆 Hackathon Submission
+
+This project is a submission for the Bitcoin Hackathon 2025, targeting the following challenge tracks:
+
+- **Best use of exSat**
+- **Best use of Rebar Data**
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -72,7 +71,7 @@ We leverage Rebar Data for enhanced market insights and security:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/bitlend.git
+   git clone https://github.com/kamalbuilds/bitlend.git
    cd bitlend
    ```
 
