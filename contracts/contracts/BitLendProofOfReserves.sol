@@ -21,8 +21,17 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
             uint64 value;
         }
         
+        // Get UTXOs by ScriptPubKey
         function getUTXOByScriptPubKey(bytes memory scriptpubkey) external view returns (UTXO[] memory);
+        
+        // Get UTXO by ID
         function getUTXOById(uint64 id) external view returns (UTXO memory);
+        
+        // Check if a BTC address is valid
+        function isvalid(string memory btc_address) external view returns (bool);
+        
+        // Get total value of UTXOs for a scriptPubKey
+        function getTotalValueForScriptPubKey(bytes memory scriptpubkey) external view returns (uint256);
     }
     
     // The exSat UTXO Management Contract address
@@ -51,6 +60,7 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
     event CollateralVerified(address indexed depositor, bytes btcScriptPubKey, uint256 amount, uint256 timestamp);
     event UTXOManagementContractUpdated(address oldContract, address newContract);
     event VaultContractUpdated(address oldVault, address newVault);
+    event DepositorRegistered(address indexed depositor, bytes btcScriptPubKey, uint256 depositAmount);
     
     /**
      * @dev Constructor to initialize the contract with required addresses
@@ -91,13 +101,19 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
      * @param _scriptPubKey The Bitcoin scriptPubKey in bytes
      * @param _depositAmount The amount deposited in satoshis
      */
-    function registerDepositor(address _depositor, bytes calldata _scriptPubKey, uint256 _depositAmount) external {
+    function registerDepositor(
+        address _depositor,
+        bytes calldata _scriptPubKey,
+        uint256 _depositAmount
+    ) external {
         require(msg.sender == vaultContract, "Only vault can register depositors");
         require(_depositor != address(0), "Invalid depositor address");
         require(_scriptPubKey.length > 0, "Invalid scriptPubKey");
+        require(_depositAmount > 0, "Deposit amount must be greater than 0");
         
         bytes32 scriptPubKeyHash = keccak256(_scriptPubKey);
         
+        // Store depositor information
         depositors[scriptPubKeyHash] = DepositorInfo({
             depositor: _depositor,
             btcScriptPubKey: _scriptPubKey,
@@ -106,31 +122,15 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
             lastVerificationTime: 0,
             isVerified: false
         });
+        
+        emit DepositorRegistered(_depositor, _scriptPubKey, _depositAmount);
     }
     
     /**
-     * @dev Update depositor information
-     * Can only be called by the vault contract
-     * @param _depositor Ethereum address of the depositor
-     * @param _scriptPubKey The Bitcoin scriptPubKey in bytes
-     * @param _newDepositAmount The new deposit amount
-     */
-    function updateDepositor(address _depositor, bytes calldata _scriptPubKey, uint256 _newDepositAmount) external {
-        require(msg.sender == vaultContract, "Only vault can update depositors");
-        
-        bytes32 scriptPubKeyHash = keccak256(_scriptPubKey);
-        DepositorInfo storage info = depositors[scriptPubKeyHash];
-        
-        require(info.depositor == _depositor, "Depositor mismatch");
-        
-        info.depositAmount = _newDepositAmount;
-    }
-    
-    /**
-     * @dev Verify the UTXO for a depositor to confirm their collateral
+     * @dev Verify UTXO collateral for a depositor
      * @param _scriptPubKey The Bitcoin scriptPubKey to verify
-     * @return verified Boolean indicating if verification was successful
-     * @return verifiedAmount The amount verified in the UTXO
+     * @return verified Whether the collateral is verified
+     * @return verifiedAmount The amount verified
      */
     function verifyUTXO(bytes calldata _scriptPubKey) public nonReentrant returns (bool verified, uint256 verifiedAmount) {
         bytes32 scriptPubKeyHash = keccak256(_scriptPubKey);
@@ -140,12 +140,20 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
         
         // Get UTXOs from the UTXO Management Contract
         IUTXOManagement utxoMgmt = IUTXOManagement(utxoManagementContract);
-        IUTXOManagement.UTXO[] memory utxos = utxoMgmt.getUTXOByScriptPubKey(_scriptPubKey);
         
-        // Calculate total value of UTXOs
+        // Get total value directly if the function is available
         uint256 totalValue = 0;
-        for (uint256 i = 0; i < utxos.length; i++) {
-            totalValue += utxos[i].value;
+        
+        try utxoMgmt.getTotalValueForScriptPubKey(_scriptPubKey) returns (uint256 value) {
+            totalValue = value;
+        } catch {
+            // Fallback to iterating through UTXOs if direct method unavailable
+            IUTXOManagement.UTXO[] memory utxos = utxoMgmt.getUTXOByScriptPubKey(_scriptPubKey);
+            
+            // Calculate total value of UTXOs
+            for (uint256 i = 0; i < utxos.length; i++) {
+                totalValue += utxos[i].value;
+            }
         }
         
         // Update depositor information
@@ -176,7 +184,7 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
         bytes32 scriptPubKeyHash = keccak256(_scriptPubKey);
         DepositorInfo storage info = depositors[scriptPubKeyHash];
         
-        require(info.depositor == _depositor, "Depositor mismatch");
+        require(info.depositor == _depositor, "Not depositor's UTXO");
         
         return (
             info.isVerified,
@@ -187,29 +195,36 @@ contract BitLendProofOfReserves is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Get the total verified collateral for the system
-     * @return totalVerified Total amount of verified collateral
-     * @return totalRequired Total amount of required collateral
-     * @return collateralizationRatio The current collateralization ratio (scaled by 1e18)
+     * @dev Get the current UTXO balance for a scriptPubKey
+     * @param _scriptPubKey The Bitcoin scriptPubKey to check
+     * @return balance The current balance
      */
-    function getSystemCollateralization() external view returns (
-        uint256 totalVerified,
-        uint256 totalRequired,
-        uint256 collateralizationRatio
-    ) {
-        uint256 verifiedTotal = 0;
-        uint256 requiredTotal = 0;
+    function getCurrentUTXOBalance(bytes calldata _scriptPubKey) external view returns (uint256 balance) {
+        IUTXOManagement utxoMgmt = IUTXOManagement(utxoManagementContract);
         
-        // Calculate totals
-        // Note: In a production system, we'd need a more efficient way to iterate through all depositors
-        // This is simplified for demonstration purposes
-        
-        // Return the collateralization ratio (scaled by 1e18 for precision)
-        uint256 ratio = 0;
-        if (requiredTotal > 0) {
-            ratio = (verifiedTotal * 1e18) / requiredTotal;
+        try utxoMgmt.getTotalValueForScriptPubKey(_scriptPubKey) returns (uint256 value) {
+            return value;
+        } catch {
+            // Fallback to iterating through UTXOs if direct method unavailable
+            IUTXOManagement.UTXO[] memory utxos = utxoMgmt.getUTXOByScriptPubKey(_scriptPubKey);
+            
+            // Calculate total value of UTXOs
+            uint256 totalValue = 0;
+            for (uint256 i = 0; i < utxos.length; i++) {
+                totalValue += utxos[i].value;
+            }
+            
+            return totalValue;
         }
-        
-        return (verifiedTotal, requiredTotal, ratio);
+    }
+    
+    /**
+     * @dev Validate a Bitcoin address through the UTXO Management Contract
+     * @param _btcAddress Bitcoin address to validate
+     * @return isValid Whether the address is valid
+     */
+    function validateBitcoinAddress(string calldata _btcAddress) external view returns (bool isValid) {
+        IUTXOManagement utxoMgmt = IUTXOManagement(utxoManagementContract);
+        return utxoMgmt.isvalid(_btcAddress);
     }
 } 
