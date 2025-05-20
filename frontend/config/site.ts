@@ -1,9 +1,9 @@
 export type SiteConfig = typeof siteConfig
 
 export const siteConfig = {
-  name: "Next.js",
+  name: "BitLend",
   description:
-    "Beautifully designed components that you can copy and paste into your apps. Accessible. Customizable. Open Source.",
+    "BitLend is a decentralized lending platform that allows you to borrow and lend assets with ease.",
   mainNav: [
     {
       title: "Home",
@@ -11,7 +11,7 @@ export const siteConfig = {
     },
   ],
   links: {
-    twitter: "https://twitter.com/shadcn",
+    twitter: "https://twitter.com/kamalbuilds",
     github: "https://github.com/shadcn/ui",
     docs: "https://ui.shadcn.com",
   },
