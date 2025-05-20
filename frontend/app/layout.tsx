@@ -7,6 +7,7 @@ import { ConnectButton, ThirdwebProvider } from "thirdweb/react";
 import { client } from "@/lib/client";
 import { EXSAT_CHAIN_CONFIG } from "@/config/contracts";
 import { defineChain } from "thirdweb";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -44,6 +45,7 @@ export default function RootLayout({
                   client={client}
                   chains={chains}
                 />
+                <ThemeToggle />
               </div>
             </div>
           </header>

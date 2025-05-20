@@ -4,6 +4,233 @@
 
 BitLend is a permissionless lending protocol built on exSat Network that allows Bitcoin holders to collateralize their BTC to borrow stablecoins or XSAT tokens. The platform leverages exSat's UTXO data synchronization and EVM compatibility to create a seamless, trustless lending experience with transparent proof of reserves.
 
+## Architecture Diagram
+
+```mermaid
+flowchart TB
+    %% Define comprehensive styles
+    classDef exSatLayer fill:#1e293b,stroke:#64748b,stroke-width:3px,color:#f8fafc
+    classDef bitcoinLayer fill:#f97316,stroke:#ea580c,stroke-width:3px,color:#ffffff
+    classDef contractLayer fill:#0f172a,stroke:#3b82f6,stroke-width:3px,color:#f8fafc
+    classDef frontendLayer fill:#059669,stroke:#047857,stroke-width:3px,color:#ffffff
+    classDef bridgeLayer fill:#7c3aed,stroke:#6d28d9,stroke-width:3px,color:#ffffff
+    classDef dataLayer fill:#dc2626,stroke:#b91c1c,stroke-width:3px,color:#ffffff
+    classDef component fill:#ffffff,stroke:#374151,stroke-width:2px,color:#1f2937
+    classDef token fill:#fbbf24,stroke:#f59e0b,stroke-width:2px,color:#1f2937
+    classDef interaction fill:#06b6d4,stroke:#0891b2,stroke-width:2px,color:#ffffff
+    
+    %% Enhanced Layer Structure
+    subgraph BitcoinEcosystem["🟠 Bitcoin Ecosystem"]
+        direction TB
+        BTCNetwork["Bitcoin Network"]
+        BTCTx["Bitcoin Transactions"]
+        UTXO["Bitcoin UTXO Set"]
+        Mempool["Bitcoin Mempool"]
+        BTCBlocks["Bitcoin Blocks"]
+    end
+    
+    subgraph ExSatInfrastructure["🔷 exSat Network Infrastructure"]
+        direction TB
+        
+        subgraph DataConsensus["📊 Data Consensus Layer"]
+            UTXOM["UTXO Management Contract"]
+            Consensus["exSat Hybrid Consensus"]
+            Validators["BTC & XSAT Validators"]
+            Synchronizers["Bitcoin Synchronizers"]
+        end
+        
+        subgraph BridgeLayer["🌉 Cross-Chain Bridge Layer"]
+            Bridge["exSat Bridge Protocol"]
+            BridgeValidation["Bridge Validation Engine"]
+            AssetCustody["Decentralized Asset Custody"]
+        end
+        
+        subgraph TokenLayer["🪙 Token Infrastructure"]
+            XBTC["XBTC Token (BTC Representation)"]
+            XSAT["XSAT Native Token"]
+            USDC["USDC Stablecoin"]
+        end
+    end
+    
+    subgraph BitLendProtocol["💰 BitLend Protocol Smart Contracts"]
+        direction TB
+        
+        subgraph CoreContracts["🏛️ Core Protocol Contracts"]
+            BVault["BitLendVault
+            • Position Management
+            • Collateral Tracking
+            • Loan Origination"]
+            
+            BBridge["BitLendBridge
+            • exSat Bridge Integration
+            • Asset Conversion
+            • Cross-chain Verification"]
+            
+            BPriceOracle["BitLendPriceOracle
+            • Real-time Price Feeds
+            • Rebar Data Integration
+            • Multi-source Validation"]
+        end
+        
+        subgraph SecurityContracts["🛡️ Security & Risk Management"]
+            BLiquidator["BitLendLiquidator
+            • Health Factor Monitoring
+            • MEV-protected Liquidations
+            • Rebar Shield Integration"]
+            
+            BPoR["BitLendProofOfReserves
+            • UTXO Verification
+            • Collateral Transparency
+            • Real-time Audit Trail"]
+        end
+        
+        ContractSDK["🔗 ThirdwebSDK v5
+        Contract Interaction Layer
+        • Type-safe Contracts
+        • Event Listening
+        • Transaction Management"]
+    end
+    
+    subgraph BitLendFrontend["🖥️ BitLend Frontend Application"]
+        direction TB
+        
+        subgraph UserInterface["👤 User Interface Components"]
+            Dashboard["📊 Dashboard
+            • Position Overview
+            • Health Monitoring
+            • Quick Actions"]
+            
+            BridgeModal["🌉 Bridge Interface
+            • BTC → XBTC Conversion
+            • UTXO Verification UI
+            • Transaction Tracking"]
+            
+            LoanManagement["💳 Loan Management
+            • Deposit/Withdraw
+            • Borrow/Repay
+            • Interest Tracking"]
+        end
+        
+        subgraph AnalyticsInterface["📈 Analytics & Verification"]
+            UTXOViewer["🔍 UTXO Viewer
+            • Bitcoin UTXO Explorer
+            • Confirmation Status
+            • Transaction History"]
+            
+            ProofOfReserves["✅ Proof of Reserves
+            • Real-time Verification
+            • Solvency Dashboard
+            • Transparency Reports"]
+            
+            RebarAnalytics["📊 Rebar Analytics
+            • Market Data
+            • Liquidation Risks
+            • MEV Protection Status"]
+        end
+        
+        MarketStats["📈 Market Statistics
+        • TVL Tracking
+        • Interest Rates
+        • Protocol Metrics"]
+    end
+    
+    subgraph RebarIntegration["⚡ Rebar Data & MEV Protection"]
+        direction TB
+        RebarAPI["Rebar Data API"]
+        RebarShield["Rebar Shield (MEV Protection)"]
+        MempoolAnalytics["Mempool Analytics"]
+        PriceFeeds["Professional Price Feeds"]
+    end
+    
+    %% Enhanced Data Flow Connections
+    
+    %% Bitcoin to exSat Data Flow
+    BTCNetwork -.->|"Real-time Block Data"| Synchronizers
+    BTCTx -.->|"Transaction Monitoring"| UTXOM
+    UTXO -.->|"UTXO State Updates"| UTXOM
+    BTCBlocks -.->|"Block Verification"| Validators
+    
+    %% exSat Internal Flows
+    Synchronizers -->|"Consensus Participation"| Consensus
+    Validators -->|"Validation Results"| Consensus
+    UTXOM -->|"Verified UTXO Data"| BPoR
+    
+    %% Bridge Operations
+    Bridge <-->|"Asset Conversion"| BBridge
+    BridgeValidation -->|"Security Validation"| BBridge
+    Bridge -->|"Token Minting"| XBTC
+    
+    %% Token Interactions
+    XBTC -->|"Collateral Asset"| BVault
+    USDC -->|"Lending Asset"| BVault
+    XSAT -->|"Governance & Staking"| BVault
+    
+    %% Smart Contract Interactions
+    BBridge -->|"Bridged Assets"| BVault
+    BPriceOracle -->|"Price Data"| BVault
+    BPriceOracle -->|"Liquidation Prices"| BLiquidator
+    BVault -->|"Position Data"| BLiquidator
+    BPoR -->|"Collateral Verification"| BVault
+    
+    %% Rebar Integration
+    RebarAPI -->|"Market Data"| BPriceOracle
+    RebarShield -->|"MEV Protection"| BLiquidator
+    MempoolAnalytics -->|"Mempool Insights"| BLiquidator
+    Mempool -.->|"Pending Transactions"| MempoolAnalytics
+    
+    %% Frontend to Contract Interactions
+    ContractSDK <-->|"Smart Contract Calls"| CoreContracts
+    ContractSDK <-->|"Security Operations"| SecurityContracts
+    
+    %% User Interface Flows
+    Dashboard <-->|"Position Management"| ContractSDK
+    BridgeModal <-->|"Bridge Operations"| ContractSDK
+    LoanManagement <-->|"Loan Operations"| ContractSDK
+    
+    %% Data Verification Flows
+    UTXOViewer <-.->|"UTXO Query"| BPoR
+    ProofOfReserves <-.->|"Reserve Verification"| BPoR
+    RebarAnalytics <-.->|"Market Analytics"| RebarAPI
+    
+    %% Real-time Monitoring
+    BLiquidator -.->|"Liquidation Events"| Dashboard
+    MarketStats <-.->|"Protocol Metrics"| BVault
+    
+    %% Apply enhanced styling
+    class BitcoinEcosystem,BTCNetwork,BTCTx,UTXO,Mempool,BTCBlocks bitcoinLayer
+    class ExSatInfrastructure,DataConsensus,BridgeLayer,TokenLayer,UTXOM,Consensus,Validators,Synchronizers,Bridge,BridgeValidation,AssetCustody exSatLayer
+    class XBTC,XSAT,USDC token
+    class BitLendProtocol,CoreContracts,SecurityContracts,BBridge,BVault,BPriceOracle,BLiquidator,BPoR,ContractSDK contractLayer
+    class BitLendFrontend,UserInterface,AnalyticsInterface,Dashboard,BridgeModal,LoanManagement,UTXOViewer,ProofOfReserves,RebarAnalytics,MarketStats frontendLayer
+    class RebarIntegration,RebarAPI,RebarShield,MempoolAnalytics,PriceFeeds bridgeLayer
+```
+
+### Architecture Overview
+
+BitLend leverages exSat Network's unique hybrid consensus mechanism and Bitcoin UTXO indexing capabilities to create a truly transparent and trustless Bitcoin lending protocol. The architecture is designed with four main layers:
+
+#### 🟠 **Bitcoin Ecosystem Layer**
+- **Real-time Bitcoin Data**: Direct connection to Bitcoin network for live transaction and UTXO monitoring
+- **Mempool Analysis**: Integration with Bitcoin mempool for liquidation risk assessment
+- **Block Verification**: Continuous validation of Bitcoin block data through exSat's synchronizers
+
+#### 🔷 **exSat Network Infrastructure** 
+- **Hybrid Consensus**: Combines Bitcoin's PoW security with exSat's PoS efficiency
+- **UTXO Management**: On-chain indexing of Bitcoin UTXOs for transparency
+- **Cross-chain Bridge**: Secure, decentralized bridge for BTC ↔ XBTC conversion
+- **Validator Network**: Dual validation system (BTC validators + XSAT validators)
+
+#### 💰 **BitLend Protocol Layer**
+- **Position Management**: Sophisticated collateral and loan tracking via BitLendVault
+- **Price Oracle Integration**: Multi-source price feeds including Rebar Data for accuracy
+- **MEV-Protected Liquidations**: Rebar Shield integration prevents front-running
+- **Proof of Reserves**: Real-time UTXO verification for complete transparency
+
+#### 🖥️ **Frontend Application Layer**
+- **Intuitive Dashboard**: Comprehensive position management and health monitoring
+- **UTXO Verification UI**: Visual proof of Bitcoin collateral backing
+- **Rebar Analytics**: Real-time market data and liquidation risk assessment
+- **Bridge Interface**: Seamless BTC to XBTC conversion with verification
 
 ## 🔑 Key Features
 
@@ -162,4 +389,126 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [exSat Network](https://exsat.network) - For providing the Bitcoin-EVM infrastructure
 - [Rebar Data](https://rebarlabs.io) - For Bitcoin analytics and MEV protection
-- [OpenZeppelin](https://openzeppelin.com) - For secure smart contract libraries 
+- [OpenZeppelin](https://openzeppelin.com) - For secure smart contract libraries
+
+## Project Structure
+
+The project consists of two main components:
+
+1. **Smart Contracts**: Solidity contracts for the lending protocol (in `/contracts`)
+2. **Frontend**: Next.js/React frontend for interacting with the contracts (in `/frontend`)
+
+## Smart Contracts
+
+### Contract Deployment
+
+#### Option 1: Deploying with Hardhat (Original Method)
+
+```bash
+cd contracts
+npm install
+npx hardhat compile
+npx hardhat run scripts/deploy.js --network exsat-testnet
+```
+
+#### Option 2: Deploying with thirdweb v5 (Recommended)
+
+```bash
+cd contracts
+npm install thirdweb@^5.96.5 ethers@^6.9.2
+# Make sure .env file exists with required variables
+npx hardhat compile
+node scripts/deploy-thirdweb.js
+```
+
+Required environment variables in `.env`:
+```
+PRIVATE_KEY=your_private_key_here
+THIRDWEB_CLIENT_ID=your_thirdweb_client_id_here
+EXSAT_NETWORK=testnet # or mainnet
+# The following addresses are required for production deployment
+EXSAT_UTXO_MANAGEMENT_ADDRESS=0x...
+EXSAT_BRIDGE_ADDRESS=0x...
+XBTC_TOKEN_ADDRESS=0x...
+USDC_TOKEN_ADDRESS=0x...
+FEE_COLLECTOR_ADDRESS=0x...
+```
+
+### Contract Structure
+
+- **BitLendBridge**: Interfaces with exSat's bridge for BTC to XBTC conversion
+- **BitLendVault**: Manages lending positions, collateral, and borrowing
+- **BitLendPriceOracle**: Provides price feeds for BTC and stablecoins
+- **BitLendLiquidator**: Handles liquidation of under-collateralized positions
+- **BitLendProofOfReserves**: Implements UTXO verification for transparent collateral proof
+
+## Frontend
+
+### Installation
+
+```bash
+cd frontend
+npm install
+```
+
+### Running the Application
+
+```bash
+cd frontend
+npm run dev
+```
+
+### Frontend Configuration
+
+The frontend uses thirdweb v5 for interacting with the deployed contracts. Configuration can be found in:
+
+- `frontend/config/contracts.ts`: Contract addresses and chain configurations
+- `frontend/lib/client.ts`: thirdweb client configuration 
+- `frontend/hooks/useContractInteraction.ts`: Custom hooks for contract interactions
+
+### thirdweb v5 Migration
+
+The frontend has been migrated from thirdweb v4 to v5. Key changes include:
+
+1. **Updated Imports**:
+   - Using new imports from `thirdweb/react` rather than `@thirdweb-dev/react`
+   - Direct imports from `ethers` rather than `ethers/lib/utils`
+
+2. **Custom Hooks**:
+   - Created custom hooks for contract interactions in `useContractInteraction.ts`
+   - Specialized hooks for common operations (deposit, borrow, repay, withdraw)
+
+3. **ThirdwebProvider**:
+   - Simplified provider configuration in `ThirdwebProviderWrapper.tsx`
+
+4. **Contract Interactions**:
+   - Using `getContract` to create contract instances
+   - Using `prepareContractCall` and `useSendTransaction` for write operations
+   - Using `useReadContract` for read operations
+
+## Deployment
+
+After deploying the contracts, update the contract addresses in `frontend/config/contracts.ts`:
+
+```typescript
+export const CONTRACT_ADDRESSES = {
+  testnet: {
+    BITLEND_VAULT: "0x...",
+    BITLEND_BRIDGE: "0x...",
+    BITLEND_PRICE_ORACLE: "0x...",
+    BITLEND_LIQUIDATOR: "0x...",
+    BITLEND_PROOF_OF_RESERVES: "0x...",
+    XBTC_TOKEN: "0x...",
+    USDC_TOKEN: "0x..."
+  },
+  mainnet: {
+    // Mainnet addresses
+  }
+};
+```
+
+## Additional Notes
+
+- Make sure to set your thirdweb client ID in the environment variable `NEXT_PUBLIC_THIRDWEB_CLIENT_ID`
+- For development, you can use mock contracts which will be deployed automatically if real addresses are not provided
+- The frontend shows a UTXO verification panel that demonstrates the capability to verify Bitcoin collateral through exSat's on-chain UTXO index 

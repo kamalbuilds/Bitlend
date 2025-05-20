@@ -5,6 +5,7 @@ import { NavItem } from "@/types/nav"
 import { siteConfig } from "@/config/site"
 import { cn } from "@/lib/utils"
 import { Icons } from "@/components/icons"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface MainNavProps {
   items?: NavItem[]
@@ -36,6 +37,9 @@ export function MainNav({ items }: MainNavProps) {
           )}
         </nav>
       ) : null}
+      <div className="flex items-center space-x-2 ml-auto">
+        <ThemeToggle />
+      </div>
     </div>
   )
 }

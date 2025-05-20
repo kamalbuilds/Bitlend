@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useActiveAccount } from "thirdweb/react"
-import { ConnectButton } from "@/components/ConnectButton"
 import { Dashboard } from "@/components/Dashboard"
 import { BridgeModal } from "@/components/BridgeModal"
 import { Button } from "@/components/ui/button"
