@@ -30,7 +30,7 @@ export default contracts;
 
 // Contract addresses for exSat Network
 export const EXSAT_CHAIN_ID = 7200; // exSat Mainnet
-export const EXSAT_TESTNET_CHAIN_ID = 7300; // exSat Testnet (using a placeholder value)
+export const EXSAT_TESTNET_CHAIN_ID = 839999; // exSat Testnet 
 
 // Contract addresses - replace with actual deployed addresses
 export const CONTRACT_ADDRESSES = {

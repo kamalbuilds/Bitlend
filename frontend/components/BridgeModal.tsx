@@ -16,10 +16,11 @@ import {
 } from "@/hooks/useContractInteraction";
 
 interface BridgeModalProps {
+  isOpen: boolean;
   onClose: () => void;
 }
 
-export const BridgeModal = ({ onClose }: BridgeModalProps) => {
+export const BridgeModal = ({ isOpen, onClose }: BridgeModalProps) => {
   const [bridgeDirection, setBridgeDirection] = useState('deposit');
   const [amount, setAmount] = useState('');
   const [btcAddress, setBtcAddress] = useState('');
@@ -114,7 +115,8 @@ export const BridgeModal = ({ onClose }: BridgeModalProps) => {
       setIsLoading(true);
       
       // Register BTC address if needed
-      if (!userBtcAddress || userBtcAddress === '0x0' || userBtcAddress === '') {
+      const btcAddressValue = Array.isArray(userBtcAddress) && userBtcAddress.length > 0 ? userBtcAddress[0] : null;
+      if (!btcAddressValue || btcAddressValue === '0x0' || btcAddressValue === '') {
         await registerBtcAddress(btcAddress);
       }
       
@@ -150,7 +152,7 @@ export const BridgeModal = ({ onClose }: BridgeModalProps) => {
   };
 
   return (
-    <Dialog open={true} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Bridge BTC ⟷ XBTC</DialogTitle>

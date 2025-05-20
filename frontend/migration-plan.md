@@ -135,7 +135,7 @@ We simplified the chain configuration by using a standard format for exSat netwo
 
 ```typescript
 const chainConfig = {
-  id: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" ? 7200 : 7300,
+  id: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" ? 7200 : 839999,
   name: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" ? "exSat Network" : "exSat Testnet",
   rpc: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" 
     ? "https://evm.exsat.network/" 

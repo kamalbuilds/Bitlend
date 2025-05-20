@@ -5,6 +5,8 @@ import "../styles/globals.css";
 import Link from 'next/link';
 import { ConnectButton, ThirdwebProvider } from "thirdweb/react";
 import { client } from "@/lib/client";
+import { EXSAT_CHAIN_CONFIG } from "@/config/contracts";
+import { defineChain } from "thirdweb";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -16,6 +18,20 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+
+  const exsattestnetchain = defineChain({
+    id: 839999,
+    name: "exSat Testnet",
+    rpc: "https://evm-tst3.exsat.network/",
+    nativeCurrency: {
+      name: "BTC", 
+      symbol: "BTC",
+      decimals: 18,
+    },
+  });
+
+  const chains = [exsattestnetchain];
+  
   return (
     <html lang="en">
       <body className={inter.className}>
@@ -26,6 +42,7 @@ export default function RootLayout({
               <div>
                 <ConnectButton 
                   client={client}
+                  chains={chains}
                 />
               </div>
             </div>

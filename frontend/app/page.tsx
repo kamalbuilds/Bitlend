@@ -1,57 +1,47 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { ConnectButton } from "thirdweb/react";
-import { Dashboard } from '@/components/Dashboard';
-import { BridgeModal } from '@/components/BridgeModal';
-import { client } from '@/lib/thirdweb';
+import { useState } from "react"
+import { useActiveAccount } from "thirdweb/react"
+import { ConnectButton } from "@/components/ConnectButton"
+import { Dashboard } from "@/components/Dashboard"
+import { BridgeModal } from "@/components/BridgeModal"
+import { Button } from "@/components/ui/button"
 
 export default function Home() {
-  const [connected, setConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [showBridgeModal, setShowBridgeModal] = useState(false);
-
+  const [showBridgeModal, setShowBridgeModal] = useState(false)
+  
+  const account = useActiveAccount()
+  const address = account?.address
+  
+  const handleBridgeClick = () => {
+    setShowBridgeModal(true)
+  }
+  
   return (
-    <main className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-900">
+    <main className="flex min-h-screen flex-col px-4 md:px-8 py-8">
       
-      <div className="py-10">
-        <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
-          {connected ? (
-            <Dashboard 
-              address={address} 
-              onBridgeClick={() => setShowBridgeModal(true)}
-            />
-          ) : (
-            <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-              <div className="px-4 py-16 sm:p-12 text-center">
-                <h3 className="text-2xl leading-8 font-bold text-gray-900 dark:text-white">
-                  Welcome to BitLend
-                </h3>
-                <div className="mt-4 text-lg text-gray-500 dark:text-gray-400">
-                  <p>The Trustless Bitcoin Lending Protocol on exSat Network</p>
-                </div>
-                <div className="mt-6 text-base text-gray-500 dark:text-gray-400 max-w-3xl mx-auto">
-                  <p>BitLend allows Bitcoin holders to collateralize their BTC to borrow stablecoins or XSAT tokens.</p>
-                  <p className="mt-2">Connect your wallet to get started with your lending journey.</p>
-                </div>
-                <div className="mt-8 flex justify-center">
-                  <button
-                    type="button"
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    onClick={() => setShowBridgeModal(true)}
-                  >
-                    Learn How to Bridge BTC
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+      {!address ? (
+        <div className="flex flex-col items-center justify-center text-center py-16 md:py-24">
+          <h2 className="text-2xl md:text-3xl font-bold mb-2">Welcome to BitLend</h2>
+          <p className="text-lg text-muted-foreground max-w-lg mb-8">
+            A transparent Bitcoin-backed lending protocol on exSat Network. 
+            Deposit BTC as collateral and borrow stablecoins.
+          </p>
+          <Button onClick={handleBridgeClick} size="lg">
+            Learn How to Bridge BTC
+          </Button>
         </div>
-      </div>
-      
-      {showBridgeModal && (
-        <BridgeModal onClose={() => setShowBridgeModal(false)} />
+      ) : (
+        <Dashboard 
+          address={address}
+          onBridgeClick={handleBridgeClick}
+        />
       )}
+      
+      <BridgeModal
+        isOpen={showBridgeModal}
+        onClose={() => setShowBridgeModal(false)}
+      />
     </main>
-  );
+  )
 }

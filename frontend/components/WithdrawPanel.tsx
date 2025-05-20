@@ -1,280 +1,324 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 import { useActiveAccount } from "thirdweb/react";
-import { getContractAddresses } from "@/config/contracts";
-import { parseUnits, formatUnits } from "ethers";
-import { 
-  useContractData,
-  useWithdrawFlow
-} from "@/hooks/useContractInteraction";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Slider } from "./ui/slider";
+import { Alert, AlertDescription } from "./ui/alert";
+import { InfoIcon, AlertTriangleIcon } from "lucide-react";
+import { formatUnits } from "ethers";
+import { useContractData } from "@/hooks/useContractInteraction";
 
 interface WithdrawPanelProps {
-  userAddress: string;
-  currentCollateral: number;
-  currentDebt: number;
+  onBridgeClick: () => void;
 }
 
-export default function WithdrawPanel({ 
-  userAddress, 
-  currentCollateral, 
-  currentDebt 
-}: WithdrawPanelProps) {
-  const [amount, setAmount] = useState('');
-  const [collateral, setCollateral] = useState(currentCollateral);
-  const [debt, setDebt] = useState(currentDebt);
-  const [maxWithdrawable, setMaxWithdrawable] = useState(0);
-  const [healthFactor, setHealthFactor] = useState(200);
-  const [newHealthFactor, setNewHealthFactor] = useState(200);
-  const { toast } = useToast();
+const WithdrawPanel = ({ onBridgeClick }: WithdrawPanelProps) => {
+  const [amount, setAmount] = useState("");
+  const [percentOfCollateral, setPercentOfCollateral] = useState(50);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [transactionSuccess, setTransactionSuccess] = useState(false);
+  const [transactionError, setTransactionError] = useState("");
+  
   const account = useActiveAccount();
-  const walletAddress = account?.address;
-
-  // Get contract addresses
-  const contractAddresses = getContractAddresses();
-  const vaultAddress = contractAddresses.BITLEND_VAULT;
-  const priceOracleAddress = contractAddresses.BITLEND_PRICE_ORACLE;
+  const address = account?.address;
   
-  // Get user's position data
-  const { data: positionData, isLoading: isPositionLoading } = useContractData(
-    vaultAddress,
-    "getPosition",
-    [walletAddress || userAddress]
-  );
+  // Mock data for demo - in production, this would come from contract calls
+  const collateralAmount = 0.5; // 0.5 BTC
+  const currentDebtAmount = 15000; // $15,000 USDC
+  const btcPrice = 70000; // $70,000 per BTC
+  const collateralValueUsd = collateralAmount * btcPrice; // $35,000
+  const borrowedRatio = (currentDebtAmount / collateralValueUsd) * 100; // 42.8%
   
-  // Get XBTC price
-  const { data: btcPrice, isLoading: isPriceLoading } = useContractData(
-    priceOracleAddress,
-    "getBtcPrice",
-    []
-  );
+  // Calculate max withdrawable amount
+  const requiredCollateralForDebt = currentDebtAmount / (btcPrice * 0.7); // Required for 70% LTV
+  const maxWithdrawableAmount = Math.max(0, collateralAmount - requiredCollateralForDebt);
+  const maxWithdrawablePercentage = (maxWithdrawableAmount / collateralAmount) * 100;
   
-  // Set up the withdraw function
-  const { executeWithdraw, isLoading: isWithdrawing } = useWithdrawFlow(vaultAddress);
-
-  // Update collateral, debt and health factor when position data changes
-  useEffect(() => {
-    if (positionData) {
-      const [collateralAmount, debtAmount, currentHealthFactor] = positionData;
-      
-      if (collateralAmount) {
-        setCollateral(Number(formatUnits(collateralAmount.toString(), 8))); // XBTC has 8 decimals
-      }
-      
-      if (debtAmount) {
-        setDebt(Number(formatUnits(debtAmount.toString(), 6))); // USDC has 6 decimals
-      }
-      
-      if (currentHealthFactor) {
-        setHealthFactor(Number(formatUnits(currentHealthFactor.toString(), 2))); // Convert from percentage with 2 decimals
-      }
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Allow only numbers and decimals
+    const value = e.target.value.replace(/[^0-9.]/g, '');
+    
+    // Ensure only one decimal point
+    const parts = value.split('.');
+    if (parts.length > 2) {
+      return;
     }
-  }, [positionData]);
-
-  // Calculate max withdrawable amount when data changes
-  useEffect(() => {
-    // Only calculate if we have debt and BTC price
-    if (debt > 0 && btcPrice) {
-      const btcPriceInUSD = Number(formatUnits(btcPrice.toString(), 8)); // Price oracle uses 8 decimals
-      
-      // Calculate the minimum required collateral to maintain a 150% health factor
-      const minRequiredCollateralUSD = debt * 1.5; // 150% of the debt
-      const minRequiredCollateralBTC = minRequiredCollateralUSD / btcPriceInUSD;
-      
-      // Max withdrawable is total collateral minus minimum required
-      const calculatedMaxWithdrawable = Math.max(0, collateral - minRequiredCollateralBTC);
-      
-      setMaxWithdrawable(calculatedMaxWithdrawable);
-    } else if (debt === 0) {
-      // If there's no debt, all collateral can be withdrawn
-      setMaxWithdrawable(collateral);
+    
+    // Limit to 8 decimal places (BTC standard)
+    if (parts.length === 2 && parts[1].length > 8) {
+      return;
     }
-  }, [collateral, debt, btcPrice]);
-
-  // Calculate new health factor when amount changes
-  useEffect(() => {
-    if (debt > 0 && btcPrice && amount) {
-      const withdrawAmount = Number(amount);
-      
-      if (withdrawAmount > 0) {
-        const btcPriceInUSD = Number(formatUnits(btcPrice.toString(), 8)); // Price oracle uses 8 decimals
-        
-        // Calculate new collateral value
-        const newCollateralAmount = collateral - withdrawAmount;
-        const newCollateralUSD = newCollateralAmount * btcPriceInUSD;
-        
-        // Calculate new health factor
-        const newHealthFactorValue = (newCollateralUSD / debt) * 100;
-        setNewHealthFactor(Math.min(200, Math.round(newHealthFactorValue)));
-      } else {
-        setNewHealthFactor(healthFactor);
-      }
-    } else if (debt === 0) {
-      // If there's no debt, health factor is infinite (show as 200% for UI)
-      setNewHealthFactor(200);
+    
+    setAmount(value);
+    
+    // Update slider if max withdrawable is valid
+    if (collateralAmount > 0 && value) {
+      const percent = (parseFloat(value) / collateralAmount) * 100;
+      setPercentOfCollateral(Math.min(100, Math.max(0, percent)));
     }
-  }, [amount, collateral, debt, btcPrice, healthFactor]);
-
+  };
+  
+  const handleSliderChange = (value: number[]) => {
+    const percent = value[0];
+    setPercentOfCollateral(percent);
+    
+    if (collateralAmount > 0) {
+      const withdrawAmount = (collateralAmount * percent / 100).toFixed(8);
+      setAmount(withdrawAmount);
+    }
+  };
+  
+  const handleMaxClick = () => {
+    if (maxWithdrawableAmount > 0) {
+      setAmount(maxWithdrawableAmount.toFixed(8));
+      setPercentOfCollateral(maxWithdrawablePercentage);
+    }
+  };
+  
+  const calculateNewHealthFactor = () => {
+    if (currentDebtAmount <= 0) return 999; // No debt
+    
+    const remainingCollateral = collateralAmount - (amount ? parseFloat(amount) : 0);
+    if (remainingCollateral <= 0) return 0;
+    
+    const remainingCollateralValue = remainingCollateral * btcPrice;
+    return (remainingCollateralValue / currentDebtAmount) * 100;
+  };
+  
+  const newHealthFactor = calculateNewHealthFactor();
+  
+  const getHealthStatus = () => {
+    if (newHealthFactor >= 180) return { text: "Safe", color: "text-green-600" };
+    if (newHealthFactor >= 150) return { text: "Moderate", color: "text-yellow-600" };
+    return { text: "Risky", color: "text-red-600" };
+  };
+  
+  const healthStatus = getHealthStatus();
+  
   const handleWithdraw = async () => {
-    if (!amount || Number(amount) <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid amount to withdraw",
-        variant: "destructive",
-      });
+    if (!amount || parseFloat(amount) <= 0) {
+      setTransactionError("Please enter a valid amount");
       return;
     }
-
-    if (Number(amount) > collateral) {
-      toast({
-        title: "Insufficient collateral",
-        description: "You don't have enough collateral to withdraw this amount",
-        variant: "destructive",
-      });
+    
+    if (parseFloat(amount) > collateralAmount) {
+      setTransactionError("Amount exceeds your collateral balance");
       return;
     }
-
-    if (Number(amount) > maxWithdrawable) {
-      toast({
-        title: "Withdrawal limit exceeded",
-        description: "This withdrawal would put your position at risk of liquidation",
-        variant: "destructive",
-      });
+    
+    if (parseFloat(amount) > maxWithdrawableAmount) {
+      setTransactionError("Amount exceeds maximum withdrawable amount");
       return;
     }
-
+    
     try {
-      // Execute withdraw transaction using our custom hook
-      await executeWithdraw(amount);
+      setIsWithdrawing(true);
+      setTransactionError("");
       
-      toast({
-        title: "Withdrawal successful",
-        description: `You have successfully withdrawn ${amount} XBTC.`,
-      });
-
-      // Clear the input
-      setAmount('');
+      // Mock successful withdraw for demo
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      setTransactionSuccess(true);
+      setAmount("");
+      setPercentOfCollateral(50);
+      
+      // Reset success message after 5 seconds
+      setTimeout(() => {
+        setTransactionSuccess(false);
+      }, 5000);
     } catch (error) {
       console.error("Withdraw error:", error);
-      toast({
-        title: "Withdrawal failed",
-        description: "Failed to withdraw XBTC. Please try again.",
-        variant: "destructive",
-      });
+      setTransactionError("Failed to withdraw: " + (error instanceof Error ? error.message : "Unknown error"));
+    } finally {
+      setIsWithdrawing(false);
     }
   };
-
-  // Helper to get health factor color
-  const getHealthFactorColor = (factor: number) => {
-    if (factor >= 175) return "text-green-500";
-    if (factor >= 150) return "text-yellow-500";
-    return "text-red-500";
-  };
-
+  
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardHeader>
+        <CardTitle>Withdraw Collateral</CardTitle>
+        <CardDescription>
+          Withdraw XBTC collateral from your position
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         <div className="space-y-6">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="withdraw-amount">Withdraw Amount (XBTC)</Label>
-              <span className="text-xs text-muted-foreground">
-                Available: {collateral.toFixed(8)} XBTC
-              </span>
-            </div>
-            <Input
-              id="withdraw-amount"
-              placeholder="0.0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              type="number"
-              step="0.00000001"
-              min="0"
-              max={Math.min(collateral, maxWithdrawable)}
-              disabled={isWithdrawing}
-            />
-            
-            <div className="flex justify-end space-x-2 mt-1">
-              <button
-                type="button"
-                className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                onClick={() => setAmount(maxWithdrawable.toFixed(8))}
+          {!address ? (
+            <Alert>
+              <InfoIcon className="h-4 w-4" />
+              <AlertDescription>
+                Please connect your wallet to withdraw collateral
+              </AlertDescription>
+            </Alert>
+          ) : collateralAmount <= 0 ? (
+            <Alert>
+              <InfoIcon className="h-4 w-4" />
+              <AlertDescription>
+                You don't have any collateral to withdraw
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Available Collateral</p>
+                  <p className="text-lg font-medium">
+                    {collateralAmount.toFixed(8)} XBTC
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ≈ ${collateralValueUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Maximum Withdrawable</p>
+                  <p className="text-lg font-medium">
+                    {maxWithdrawableAmount.toFixed(8)} XBTC
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {maxWithdrawableAmount > 0 ? `${maxWithdrawablePercentage.toFixed(2)}% of your collateral` : "Repay debt to withdraw"}
+                  </p>
+                </div>
+              </div>
+              
+              {currentDebtAmount > 0 && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertTriangleIcon className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    You have an outstanding debt of ${currentDebtAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC. 
+                    You must maintain sufficient collateral or repay your loan first.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <div className="bg-muted/50 p-4 rounded-md space-y-4">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <Label htmlFor="withdraw-amount">Withdraw Amount</Label>
+                    {maxWithdrawableAmount > 0 && (
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        className="h-auto p-0 text-xs"
+                        onClick={handleMaxClick}
+                        disabled={isWithdrawing || maxWithdrawableAmount <= 0}
+                      >
+                        MAX
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div className="relative">
+                    <Input
+                      id="withdraw-amount"
+                      value={amount}
+                      onChange={handleAmountChange}
+                      placeholder="0.00000000"
+                      className="pr-16"
+                      disabled={isWithdrawing}
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                      XBTC
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>100%</span>
+                  </div>
+                  <Slider
+                    defaultValue={[50]}
+                    value={[percentOfCollateral]}
+                    max={100}
+                    step={1}
+                    onValueChange={handleSliderChange}
+                    disabled={isWithdrawing}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Partial Withdrawal</span>
+                    <span>Full Withdrawal</span>
+                  </div>
+                </div>
+                
+                {currentDebtAmount > 0 && (
+                  <div className="pt-2 border-t">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">New Health Factor:</span>
+                      <span className={`font-medium ${healthStatus.color}`}>
+                        {newHealthFactor.toFixed(0)}% ({healthStatus.text})
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Minimum required: 140%. Liquidation below 140%.
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              {transactionSuccess && (
+                <Alert className="bg-green-50 border-green-200">
+                  <AlertDescription className="text-green-800">
+                    Withdrawal successful! The XBTC has been sent to your wallet.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {transactionError && (
+                <Alert className="bg-red-50 border-red-200">
+                  <AlertDescription className="text-red-800">
+                    {transactionError}
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <Button 
+                className="w-full" 
+                onClick={handleWithdraw}
+                disabled={
+                  isWithdrawing || 
+                  !amount || 
+                  parseFloat(amount) <= 0 || 
+                  parseFloat(amount) > collateralAmount ||
+                  (currentDebtAmount > 0 && parseFloat(amount) > maxWithdrawableAmount)
+                }
               >
-                Max Safe
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Current Collateral</Label>
-            <p className="text-sm font-medium">{collateral.toFixed(8)} XBTC</p>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Current Debt</Label>
-            <p className="text-sm font-medium">{debt.toFixed(2)} USDC</p>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between">
-              <Label>Current Health Factor</Label>
-              <span className={`text-sm font-medium ${getHealthFactorColor(healthFactor)}`}>
-                {healthFactor}%
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between">
-              <Label>New Health Factor After Withdrawal</Label>
-              <span className={`text-sm font-medium ${getHealthFactorColor(newHealthFactor)}`}>
-                {newHealthFactor}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-              <div 
-                className={`h-full ${
-                  newHealthFactor >= 175 ? 'bg-green-500' : 
-                  newHealthFactor >= 150 ? 'bg-yellow-500' : 
-                  'bg-red-500'
-                }`} 
-                style={{ width: `${Math.min(newHealthFactor / 2, 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Liquidation at below 140%. Maintain above 150% to be safe.
-            </p>
-          </div>
-
-          <Button 
-            className="w-full" 
-            onClick={handleWithdraw}
-            disabled={
-              isWithdrawing || 
-              !amount || 
-              Number(amount) <= 0 || 
-              Number(amount) > collateral || 
-              Number(amount) > maxWithdrawable ||
-              newHealthFactor < 150
-            }
-          >
-            {isWithdrawing ? "Processing..." : "Withdraw XBTC"}
-          </Button>
-
-          <div className="pt-2 text-xs text-muted-foreground">
-            <p>• You can only withdraw collateral while maintaining a safe health factor.</p>
-            <p>• To withdraw more, first repay some of your debt.</p>
-            {debt > 0 ? (
-              <p>• To withdraw all collateral, you must first repay your entire debt.</p>
-            ) : null}
-          </div>
+                {isWithdrawing ? "Processing..." : "Withdraw XBTC"}
+              </Button>
+              
+              <div className="flex justify-between">
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={onBridgeClick}
+                >
+                  Bridge XBTC to BTC
+                </Button>
+              </div>
+              
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p>
+                  <strong>Important information:</strong>
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Withdrawing reduces your available collateral for borrowing</li>
+                  <li>To withdraw all collateral, you must first repay all debt</li>
+                  <li>Maintain a healthy position to avoid liquidation</li>
+                  <li>You can bridge your XBTC back to BTC after withdrawal</li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
   );
-} 
+};
+
+export default WithdrawPanel; 

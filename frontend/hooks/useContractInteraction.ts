@@ -11,7 +11,7 @@ import { client } from "@/lib/client";
 
 // Define exSat chain configuration here directly to avoid import issues
 const chainConfig = {
-  id: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" ? 7200 : 7300,
+  id: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" ? 7200 : 839999,
   name: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" ? "exSat Network" : "exSat Testnet",
   rpc: process.env.NEXT_PUBLIC_DEFAULT_NETWORK === "mainnet" 
     ? "https://evm.exsat.network/" 
