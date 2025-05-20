@@ -226,6 +226,16 @@ BitLend leverages exSat Network's unique hybrid consensus mechanism and Bitcoin 
 - **MEV-Protected Liquidations**: Rebar Shield integration prevents front-running
 - **Proof of Reserves**: Real-time UTXO verification for complete transparency
 
+So I have already created a ProofofReserve contract that in future would utilise the exsat query on evm side.
+
+This custom oracle would:
+
+Run as an off-chain service that listens for verification requests from the EVM contract
+
+Query the exSat native (EOS) layer for UTXO data using the eos contract as you said above.
+
+then Submit the verification results back to the EVM contract
+
 #### 🖥️ **Frontend Application Layer**
 - **Intuitive Dashboard**: Comprehensive position management and health monitoring
 - **UTXO Verification UI**: Visual proof of Bitcoin collateral backing
