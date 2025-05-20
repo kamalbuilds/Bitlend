@@ -12,27 +12,15 @@ module.exports = {
     },
     // exSat Network configuration
     exsatTestnet: {
-      url: "https://testnet-evm.exsat.network",
-      chainId: 38455, // exSat testnet chain ID
+      url: "https://evm-tst3.exsat.network",
+      chainId: 7300, // exSat testnet chain ID (updated to match frontend)
       accounts: [PRIVATE_KEY],
       gasPrice: 5000000000, // 5 gwei
     },
     exsatMainnet: {
       url: "https://evm.exsat.network",
-      chainId: 38453, // exSat mainnet chain ID
+      chainId: 7200, // exSat mainnet chain ID (updated to match frontend)
       accounts: [PRIVATE_KEY],
-    },
-    rskTestnet: {
-      url: "https://public-node.testnet.rsk.co",
-      chainId: 31,
-      accounts: [PRIVATE_KEY],
-      gasPrice: 60000000, // 0.06 gwei
-    },
-    rskMainnet: {
-      url: "https://public-node.rsk.co",
-      chainId: 30,
-      accounts: [PRIVATE_KEY],
-      gasPrice: 60000000, // 0.06 gwei
     },
   },
   paths: {
@@ -51,18 +39,18 @@ module.exports = {
     customChains: [
       {
         network: "exsatTestnet",
-        chainId: 38455,
+        chainId: 7300, // Updated to match frontend
         urls: {
-          apiURL: "https://testnet-explorer.exsat.network/api",
-          browserURL: "https://testnet-explorer.exsat.network",
+          apiURL: "https://scan-testnet.exsat.network/api", // Updated to match frontend
+          browserURL: "https://scan-testnet.exsat.network", // Updated to match frontend
         },
       },
       {
         network: "exsatMainnet",
-        chainId: 38453,
+        chainId: 7200, // Updated to match frontend
         urls: {
-          apiURL: "https://explorer.exsat.network/api",
-          browserURL: "https://explorer.exsat.network",
+          apiURL: "https://scan.exsat.network/api", // Updated to match frontend
+          browserURL: "https://scan.exsat.network", // Updated to match frontend
         },
       },
       {

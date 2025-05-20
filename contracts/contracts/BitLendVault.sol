@@ -4,10 +4,11 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./BitLendPriceOracle.sol";
 import "./BitLendProofOfReserves.sol";
+import "./BitLendBridge.sol";
 
 /**
  * @title BitLendVault
@@ -38,14 +39,17 @@ contract BitLendVault is Ownable, ReentrancyGuard {
     uint256 public constant VERIFICATION_INTERVAL = 3600; // 1 hour between collateral verifications
 
     // State variables
-    IERC20 public xbtcToken;                   // XBTC token
+    IERC20 public xbtcToken;                   // XBTC token (mainnet: 0x4aa4365da82ACD46e378A6f3c92a863f3e763d34)
     IERC20 public stablecoin;                  // Stablecoin (e.g., USDC)
     BitLendPriceOracle public oracle;          // Price oracle
     BitLendProofOfReserves public proofOfReserves; // Proof of reserves contract
-    address public exsatBridge;                // exSat bridge address
+    BitLendBridge public bridge;               // BitLend bridge contract
     
-    uint256 public totalXbtcCollateral;
-    uint256 public totalBorrowed;
+    uint256 public totalXbtcCollateral;        // Total XBTC collateral in the vault
+    uint256 public totalBorrowed;              // Total stablecoin borrowed
+    
+    // Addresses requiring verification
+    mapping(address => uint256) public lastVerificationTime;
     
     // Mapping from user address to their loan position
     mapping(address => LoanPosition) public positions;
@@ -57,8 +61,12 @@ contract BitLendVault is Ownable, ReentrancyGuard {
     event Repay(address indexed user, uint256 amount);
     event Liquidated(address indexed user, uint256 collateralAmount, uint256 debtAmount, address liquidator);
     event CollateralVerified(address indexed user, bool isVerified, uint256 verifiedAmount);
-    event DepositWithBTC(address indexed user, uint256 btcAmount, uint256 xbtcAmount, bytes btcScriptPubKey);
-    event WithdrawToBTC(address indexed user, uint256 xbtcAmount, uint256 btcAmount, string btcAddress);
+    event DepositAddressRegistered(address indexed user, string btcAddress);
+    event DirectBtcDeposit(address indexed user, uint256 btcAmount, uint256 xbtcAmount, bytes btcScriptPubKey);
+    event WithdrawToBTC(address indexed user, uint256 xbtcAmount, string btcAddress, string gasLevel);
+    event ContractAddressesUpdated(address indexed xbtcToken, address indexed stablecoin, address indexed oracle);
+    event BridgeAddressUpdated(address indexed oldBridge, address indexed newBridge);
+    event ProofOfReservesAddressUpdated(address indexed oldProofOfReserves, address indexed newProofOfReserves);
 
     /**
      * @dev Constructor to initialize the vault with required addresses
@@ -66,34 +74,89 @@ contract BitLendVault is Ownable, ReentrancyGuard {
      * @param _stablecoin Address of the stablecoin (e.g., USDC)
      * @param _oracle Address of the price oracle
      * @param _proofOfReserves Address of the proof of reserves contract
-     * @param _exsatBridge Address of the exSat bridge
+     * @param _bridge Address of the BitLend bridge contract
      */
     constructor(
         address _xbtcToken,
         address _stablecoin,
         address _oracle,
         address _proofOfReserves,
-        address _exsatBridge
+        address _bridge
     ) Ownable(msg.sender) {
         require(_xbtcToken != address(0), "XBTC token cannot be zero address");
         require(_stablecoin != address(0), "Stablecoin cannot be zero address");
         require(_oracle != address(0), "Price oracle cannot be zero address");
         require(_proofOfReserves != address(0), "Proof of reserves contract cannot be zero address");
-        require(_exsatBridge != address(0), "exSat bridge cannot be zero address");
+        require(_bridge != address(0), "Bridge contract cannot be zero address");
 
         xbtcToken = IERC20(_xbtcToken);
         stablecoin = IERC20(_stablecoin);
         oracle = BitLendPriceOracle(_oracle);
         proofOfReserves = BitLendProofOfReserves(_proofOfReserves);
-        exsatBridge = _exsatBridge;
+        bridge = BitLendBridge(_bridge);
+        
+        emit ContractAddressesUpdated(_xbtcToken, _stablecoin, _oracle);
+        emit BridgeAddressUpdated(address(0), _bridge);
+        emit ProofOfReservesAddressUpdated(address(0), _proofOfReserves);
     }
 
     /**
-     * @dev Interface for the exSat Bridge
+     * @dev Register a Bitcoin deposit address for a user
+     * This allows users to directly deposit BTC to get XBTC in the protocol
+     * @param btcAddress Bitcoin address assigned to the user
      */
-    interface IExSatBridge {
-        function deposit() external payable returns (uint256);
-        function withdraw(uint256 amount, string calldata btcAddress) external returns (bool);
+    function registerBtcDepositAddress(string calldata btcAddress) external {
+        require(bytes(btcAddress).length > 0, "Invalid BTC address");
+        
+        // In production, this would get a new BTC deposit address from the bridge
+        // For hackathon purposes, we're simulating this with bridge.registerBtcAddress
+        bridge.registerBtcAddress(msg.sender, btcAddress);
+        
+        emit DepositAddressRegistered(msg.sender, btcAddress);
+    }
+    
+    /**
+     * @dev Process a direct BTC deposit (called when XBTC is received via the bridge)
+     * This is called by the admin/owner after BTC deposit is confirmed and XBTC is minted
+     * @param user Address of the user who deposited BTC
+     * @param btcAmount Amount of BTC deposited (in satoshis)
+     * @param xbtcAmount Amount of XBTC received
+     * @param btcScriptPubKey Bitcoin scriptPubKey for UTXO verification
+     */
+    function processDirectBtcDeposit(
+        address user,
+        uint256 btcAmount,
+        uint256 xbtcAmount,
+        bytes calldata btcScriptPubKey
+    ) external onlyOwner {
+        require(user != address(0), "Invalid user address");
+        require(xbtcAmount > 0, "Amount must be greater than 0");
+        require(btcScriptPubKey.length > 0, "Invalid scriptPubKey");
+        
+        // Transfer XBTC from bridge/owner to vault
+        xbtcToken.safeTransferFrom(msg.sender, address(this), xbtcAmount);
+        
+        // Update user's position
+        LoanPosition storage position = positions[user];
+        
+        // If this is a new position, store the scriptPubKey
+        if (position.collateralAmount == 0) {
+            position.btcScriptPubKey = btcScriptPubKey;
+            position.lastInterestTime = block.timestamp;
+        }
+        
+        // Add collateral to position
+        position.collateralAmount += xbtcAmount;
+        totalXbtcCollateral += xbtcAmount;
+        
+        // Register or update in the proof of reserves system
+        if (keccak256(position.btcScriptPubKey) == keccak256(btcScriptPubKey)) {
+            proofOfReserves.updateDepositor(user, btcScriptPubKey, position.collateralAmount);
+        } else {
+            proofOfReserves.registerDepositor(user, btcScriptPubKey, position.collateralAmount);
+        }
+        
+        emit DirectBtcDeposit(user, btcAmount, xbtcAmount, btcScriptPubKey);
     }
 
     /**
@@ -122,58 +185,31 @@ contract BitLendVault is Ownable, ReentrancyGuard {
         totalXbtcCollateral += amount;
 
         // Register or update in the proof of reserves system
-        if (position.btcScriptPubKey.length > 0) {
+        if (position.collateralAmount > 0) {
             if (keccak256(position.btcScriptPubKey) == keccak256(btcScriptPubKey)) {
                 proofOfReserves.updateDepositor(msg.sender, btcScriptPubKey, position.collateralAmount);
             } else {
                 proofOfReserves.registerDepositor(msg.sender, btcScriptPubKey, position.collateralAmount);
             }
-        } else {
-            proofOfReserves.registerDepositor(msg.sender, btcScriptPubKey, position.collateralAmount);
         }
         
         emit Deposit(msg.sender, amount, btcScriptPubKey);
     }
 
     /**
-     * @dev Deposit BTC directly through the exSat bridge
-     * @param btcScriptPubKey Bitcoin scriptPubKey for UTXO verification
+     * @dev Request verification of a user's collateral
+     * This triggers the off-chain verification process through the Oracle
+     * @param user Address of the user to verify
      */
-    function depositWithBTC(bytes calldata btcScriptPubKey) external payable nonReentrant {
-        require(msg.value > 0, "Amount must be greater than 0");
-        require(btcScriptPubKey.length > 0, "Invalid scriptPubKey");
+    function requestVerification(address user) external {
+        LoanPosition storage position = positions[user];
+        require(position.collateralAmount > 0, "No collateral to verify");
+        require(block.timestamp - lastVerificationTime[user] >= VERIFICATION_INTERVAL, "Verification too frequent");
         
-        uint256 btcAmount = msg.value;
+        lastVerificationTime[user] = block.timestamp;
         
-        // Use exSat bridge to convert BTC to XBTC
-        IExSatBridge bridge = IExSatBridge(exsatBridge);
-        uint256 xbtcAmount = bridge.deposit{value: btcAmount}();
-        
-        // Update user's position
-        LoanPosition storage position = positions[msg.sender];
-        
-        // If this is a new position, store the scriptPubKey
-        if (position.collateralAmount == 0) {
-            position.btcScriptPubKey = btcScriptPubKey;
-            position.lastInterestTime = block.timestamp;
-        }
-        
-        // Add collateral to position
-        position.collateralAmount += xbtcAmount;
-        totalXbtcCollateral += xbtcAmount;
-        
-        // Register or update in the proof of reserves system
-        if (position.btcScriptPubKey.length > 0) {
-            if (keccak256(position.btcScriptPubKey) == keccak256(btcScriptPubKey)) {
-                proofOfReserves.updateDepositor(msg.sender, btcScriptPubKey, position.collateralAmount);
-            } else {
-                proofOfReserves.registerDepositor(msg.sender, btcScriptPubKey, position.collateralAmount);
-            }
-        } else {
-            proofOfReserves.registerDepositor(msg.sender, btcScriptPubKey, position.collateralAmount);
-        }
-        
-        emit DepositWithBTC(msg.sender, btcAmount, xbtcAmount, btcScriptPubKey);
+        // Emit verification request event - the Oracle should monitor these events
+        emit CollateralVerified(user, false, 0);
     }
 
     /**
@@ -232,12 +268,18 @@ contract BitLendVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Withdraw XBTC as BTC through the exSat bridge
+     * @dev Withdraw XBTC as BTC through the bridge
      * @param amount Amount of XBTC to withdraw
      * @param btcAddress Bitcoin address to receive the BTC
+     * @param gasLevel Gas level for Bitcoin transaction ("slow" or "fast")
      */
-    function withdrawToBTC(uint256 amount, string calldata btcAddress) external nonReentrant {
+    function withdrawToBTC(uint256 amount, string calldata btcAddress, string calldata gasLevel) external nonReentrant {
         require(bytes(btcAddress).length > 0, "Invalid BTC address");
+        require(
+            keccak256(abi.encodePacked(gasLevel)) == keccak256(abi.encodePacked("slow")) || 
+            keccak256(abi.encodePacked(gasLevel)) == keccak256(abi.encodePacked("fast")), 
+            "Gas level must be 'slow' or 'fast'"
+        );
         
         LoanPosition storage position = positions[msg.sender];
         require(amount > 0, "Amount must be greater than 0");
@@ -265,15 +307,13 @@ contract BitLendVault is Ownable, ReentrancyGuard {
         // Update proof of reserves
         proofOfReserves.updateDepositor(msg.sender, position.btcScriptPubKey, position.collateralAmount);
         
-        // Approve the bridge to spend XBTC
-        xbtcToken.safeApprove(exsatBridge, amount);
+        // Transfer XBTC to user first
+        xbtcToken.safeTransfer(msg.sender, amount);
         
-        // Withdraw through bridge
-        IExSatBridge bridge = IExSatBridge(exsatBridge);
-        bool success = bridge.withdraw(amount, btcAddress);
-        require(success, "Bridge withdrawal failed");
+        // Then initiate bridge withdrawal (user needs to approve bridge to spend their XBTC)
+        // bridge.withdraw(amount, btcAddress, gasLevel) should be called by the user
         
-        emit WithdrawToBTC(msg.sender, amount, amount, btcAddress);
+        emit WithdrawToBTC(msg.sender, amount, btcAddress, gasLevel);
     }
 
     /**
@@ -286,7 +326,7 @@ contract BitLendVault is Ownable, ReentrancyGuard {
         LoanPosition storage position = positions[msg.sender];
         require(position.collateralAmount > 0, "No collateral deposited");
         
-        // Check if position is verified
+        // Check if position is verified or attempt to verify it
         if (!position.verified) {
             verifyCollateral(msg.sender);
             require(position.verified, "Collateral not verified");
@@ -369,6 +409,28 @@ contract BitLendVault is Ownable, ReentrancyGuard {
         delete positions[user];
         
         emit Liquidated(user, collateralToLiquidate, debtToRecover, msg.sender);
+    }
+
+    /**
+     * @dev Update the contract addresses
+     * @param _bridge New bridge contract address
+     * @param _proofOfReserves New proof of reserves contract address
+     */
+    function updateContractAddresses(
+        address _bridge,
+        address _proofOfReserves
+    ) external onlyOwner {
+        if (_bridge != address(0)) {
+            address oldBridge = address(bridge);
+            bridge = BitLendBridge(_bridge);
+            emit BridgeAddressUpdated(oldBridge, _bridge);
+        }
+        
+        if (_proofOfReserves != address(0)) {
+            address oldProofOfReserves = address(proofOfReserves);
+            proofOfReserves = BitLendProofOfReserves(_proofOfReserves);
+            emit ProofOfReservesAddressUpdated(oldProofOfReserves, _proofOfReserves);
+        }
     }
 
     /**

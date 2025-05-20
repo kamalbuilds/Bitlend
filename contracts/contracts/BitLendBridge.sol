@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title BitLendBridge
@@ -16,7 +16,7 @@ contract BitLendBridge is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // Constants
-    address public constant EXSAT_BRIDGE_ADDRESS = 0xbbbbbbbbbbbbbbbbbbbbbbbb3d6f4ef81dc1b200; // Reserved address of bproxy.xsat
+    address public constant EXSAT_BRIDGE_ADDRESS = 0xbBbbbbBBBBbbbBbBbBbBbBBB3D6F4EF81dC1B200; // Reserved address of bproxy.xsat
     
     // XBTC token on exSat network (mainnet address from docs)
     IERC20 public xbtcToken = IERC20(0x4aa4365da82ACD46e378A6f3c92a863f3e763d34);
@@ -44,10 +44,19 @@ contract BitLendBridge is Ownable, ReentrancyGuard {
     
     /**
      * @dev Constructor initializes the bridge with required addresses
+     * @param _xbtcToken Address of the XBTC token
+     * @param _bridgeAddress Address of the exSat bridge
      * @param _feeCollector Address to collect fees
      */
-    constructor(address _feeCollector) Ownable(msg.sender) {
+    constructor(
+        address _xbtcToken,
+        address _bridgeAddress,
+        address _feeCollector
+    ) Ownable(msg.sender) {
         require(_feeCollector != address(0), "Fee collector cannot be zero address");
+        if (_xbtcToken != address(0)) {
+            xbtcToken = IERC20(_xbtcToken);
+        }
         feeCollector = _feeCollector;
     }
     
@@ -138,7 +147,9 @@ contract BitLendBridge is Ownable, ReentrancyGuard {
         // In a real implementation, the memo would need to be passed as data in the transfer
         // However, since exSat has a specific way to handle this via internal bridge mechanics,
         // this is a simplified version for demonstration
-        xbtcToken.safeApprove(EXSAT_BRIDGE_ADDRESS, netAmount);
+        
+        // First approve the bridge to spend tokens
+        xbtcToken.safeIncreaseAllowance(EXSAT_BRIDGE_ADDRESS, netAmount);
         
         // In a real implementation, this would trigger a cross-chain message to the exSat bridge
         // But for demonstration purposes, we'll just emit an event with the withdrawal details

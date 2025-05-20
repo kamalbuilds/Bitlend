@@ -7,9 +7,6 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 /**
  * @title BitLendPriceOracle
  * @dev Contract to provide price data for assets in the BitLend protocol
- * This oracle supports both external price feeds and manual price updates
- * with fallback mechanisms to ensure continuity of price data.
- * It integrates with Rebar Data for reliable Bitcoin price information.
  */
 contract BitLendPriceOracle is Ownable {
     // Price precision constant (same as Chainlink)
@@ -28,62 +25,41 @@ contract BitLendPriceOracle is Ownable {
     // Manual price data for tokens without feeds
     mapping(address => PriceData) public manualPrices;
     
-    // Rebar Data integration parameters
-    address public rebarOracleAddress;
-    uint256 public rebarDataLastUpdated;
-    uint256 public rebarUpdateInterval = 15 minutes;
-    
-    // BTC-specific data from Rebar
-    uint256 public btcMempoolSize;
+    // BTC price data
+    uint256 public btcPrice;
     uint256 public btcBlockHeight;
-    uint256 public btcHashRate;
-    uint256 public btcAverageBlockTime;
     
-    // Liquidation risk data from Rebar
-    struct LiquidationRisk {
-        address user;
-        uint256 riskScore; // 0-100, higher means higher risk
-        uint256 estimatedTime; // Estimated time until potential liquidation
+    // UTXO verification status
+    struct UTXOStatus {
+        uint256 verifiedTimestamp;
+        uint256 amount;
+        bool isValid;
+        string btcAddress;
     }
     
-    // Top 10 positions at risk of liquidation
-    LiquidationRisk[10] public topLiquidationRisks;
+    // Mapping from txid+index to UTXO verification status
+    mapping(bytes32 => UTXOStatus) public verifiedUTXOs;
     
     // Events
     event PriceFeedUpdated(address indexed token, address indexed priceFeed);
     event ManualPriceUpdated(address indexed token, uint256 price, uint256 timestamp);
-    event RebarOracleUpdated(address indexed oldOracle, address indexed newOracle);
-    event RebarDataUpdated(
-        uint256 btcPrice, 
-        uint256 btcMempoolSize, 
-        uint256 btcBlockHeight, 
-        uint256 btcHashRate,
-        uint256 btcAverageBlockTime
-    );
-    event LiquidationRiskUpdated(address indexed user, uint256 riskScore, uint256 estimatedTime);
+    event BtcDataUpdated(uint256 btcPrice, uint256 btcBlockHeight);
+    event UTXOVerified(bytes32 indexed utxoId, uint256 amount, bool isValid, string btcAddress);
     
     /**
      * @dev Constructor to initialize the oracle
-     * @param _rebarOracleAddress Address of the Rebar Data Oracle contract
      */
-    constructor(address _rebarOracleAddress) Ownable(msg.sender) {
-        rebarOracleAddress = _rebarOracleAddress;
-    }
-    
-    /**
-     * @dev Interface for Rebar Data Oracle
-     */
-    interface IRebarDataOracle {
-        function getBtcPrice() external view returns (uint256);
-        function getMempoolSize() external view returns (uint256);
-        function getCurrentBlockHeight() external view returns (uint256);
-        function getNetworkHashRate() external view returns (uint256);
-        function getAverageBlockTime() external view returns (uint256);
-        function getLiquidationRisks() external view returns (
-            address[10] memory users,
-            uint256[10] memory riskScores,
-            uint256[10] memory estimatedTimes
-        );
+    constructor() Ownable(msg.sender) {
+        // Set initial BTC price
+        btcPrice = 90000 * PRICE_PRECISION; // Default to $90,000 until updated
+        btcBlockHeight = 840000; // Default block height
+        
+        // Initialize BTC price in manual prices
+        manualPrices[address(0)] = PriceData({
+            price: btcPrice,
+            timestamp: block.timestamp,
+            isValid: true
+        });
     }
     
     /**
@@ -94,16 +70,6 @@ contract BitLendPriceOracle is Ownable {
     function setPriceFeed(address token, address priceFeed) external onlyOwner {
         priceFeeds[token] = priceFeed;
         emit PriceFeedUpdated(token, priceFeed);
-    }
-    
-    /**
-     * @dev Set the Rebar Oracle address
-     * @param _rebarOracleAddress Address of the Rebar Data Oracle contract
-     */
-    function setRebarOracleAddress(address _rebarOracleAddress) external onlyOwner {
-        address oldOracle = rebarOracleAddress;
-        rebarOracleAddress = _rebarOracleAddress;
-        emit RebarOracleUpdated(oldOracle, _rebarOracleAddress);
     }
     
     /**
@@ -118,35 +84,22 @@ contract BitLendPriceOracle is Ownable {
             isValid: true
         });
         
+        if (token == address(0)) {
+            btcPrice = price;
+            emit BtcDataUpdated(btcPrice, btcBlockHeight);
+        }
+        
         emit ManualPriceUpdated(token, price, block.timestamp);
     }
     
     /**
-     * @dev Update the Rebar update interval
-     * @param interval New interval in seconds
+     * @dev Update BTC data
+     * @param _btcPrice New BTC price
+     * @param _btcBlockHeight New BTC block height
      */
-    function updateRebarInterval(uint256 interval) external onlyOwner {
-        require(interval >= 1 minutes, "Interval too short");
-        require(interval <= 1 days, "Interval too long");
-        rebarUpdateInterval = interval;
-    }
-    
-    /**
-     * @dev Update data from Rebar Data Oracle
-     * This function should be called regularly to keep BTC data current
-     */
-    function updateRebarData() external {
-        require(block.timestamp >= rebarDataLastUpdated + rebarUpdateInterval, "Too soon to update");
-        require(rebarOracleAddress != address(0), "Rebar Oracle not set");
-        
-        IRebarDataOracle rebarOracle = IRebarDataOracle(rebarOracleAddress);
-        
-        // Get BTC data
-        uint256 btcPrice = rebarOracle.getBtcPrice();
-        btcMempoolSize = rebarOracle.getMempoolSize();
-        btcBlockHeight = rebarOracle.getCurrentBlockHeight();
-        btcHashRate = rebarOracle.getNetworkHashRate();
-        btcAverageBlockTime = rebarOracle.getAverageBlockTime();
+    function updateBtcData(uint256 _btcPrice, uint256 _btcBlockHeight) external onlyOwner {
+        btcPrice = _btcPrice;
+        btcBlockHeight = _btcBlockHeight;
         
         // Update BTC price in the manual prices mapping
         manualPrices[address(0)] = PriceData({
@@ -155,29 +108,41 @@ contract BitLendPriceOracle is Ownable {
             isValid: true
         });
         
-        // Get liquidation risks
-        (
-            address[10] memory users,
-            uint256[10] memory riskScores,
-            uint256[10] memory estimatedTimes
-        ) = rebarOracle.getLiquidationRisks();
+        emit BtcDataUpdated(btcPrice, btcBlockHeight);
+    }
+    
+    /**
+     * @dev Verify a Bitcoin UTXO
+     * @param txid Transaction ID
+     * @param vout Output index
+     * @param btcAddress Bitcoin address
+     * @param amount Amount in satoshis
+     * @return isValid Whether the UTXO is valid
+     */
+    function verifyBtcUTXO(
+        bytes32 txid, 
+        uint256 vout, 
+        string calldata btcAddress, 
+        uint256 amount
+    ) external onlyOwner returns (bool isValid) {
+        // Generate UTXO ID
+        bytes32 utxoId = keccak256(abi.encodePacked(txid, vout));
         
-        // Update liquidation risks
-        for (uint256 i = 0; i < 10; i++) {
-            if (users[i] != address(0)) {
-                topLiquidationRisks[i] = LiquidationRisk({
-                    user: users[i],
-                    riskScore: riskScores[i],
-                    estimatedTime: estimatedTimes[i]
-                });
-                
-                emit LiquidationRiskUpdated(users[i], riskScores[i], estimatedTimes[i]);
-            }
-        }
+        // In a real implementation, this would verify the UTXO with a bitcoin node
+        // Here we just mark it as valid since Rebar verification was removed
+        isValid = true;
         
-        rebarDataLastUpdated = block.timestamp;
+        // Store verification result
+        verifiedUTXOs[utxoId] = UTXOStatus({
+            verifiedTimestamp: block.timestamp,
+            amount: amount,
+            isValid: isValid,
+            btcAddress: btcAddress
+        });
         
-        emit RebarDataUpdated(btcPrice, btcMempoolSize, btcBlockHeight, btcHashRate, btcAverageBlockTime);
+        emit UTXOVerified(utxoId, amount, isValid, btcAddress);
+        
+        return isValid;
     }
     
     /**
@@ -227,8 +192,8 @@ contract BitLendPriceOracle is Ownable {
      * @return usdValue Value in USD (scaled by PRICE_PRECISION)
      */
     function getXbtcUsdValue(uint256 xbtcAmount) external view returns (uint256) {
-        uint256 btcPrice = getBtcPrice();
-        return (xbtcAmount * btcPrice) / 1e8; // XBTC has 8 decimals
+        uint256 currentBtcPrice = getBtcPrice();
+        return (xbtcAmount * currentBtcPrice) / 1e8; // XBTC has 8 decimals
     }
     
     /**
@@ -241,33 +206,14 @@ contract BitLendPriceOracle is Ownable {
     }
     
     /**
-     * @dev Get liquidation risk for a specific user
-     * @param user Address of the user
-     * @return riskScore Risk score (0-100)
-     * @return estimatedTime Estimated time until potential liquidation
-     */
-    function getLiquidationRisk(address user) external view returns (uint256 riskScore, uint256 estimatedTime) {
-        for (uint256 i = 0; i < 10; i++) {
-            if (topLiquidationRisks[i].user == user) {
-                return (topLiquidationRisks[i].riskScore, topLiquidationRisks[i].estimatedTime);
-            }
-        }
-        return (0, 0); // User not in top risks
-    }
-    
-    /**
-     * @dev Get latest BTC network data
-     * @return mempool Current mempool size
+     * @dev Get latest BTC data
+     * @return price Current BTC price in USD
      * @return blockHeight Current BTC block height
-     * @return hashRate Current network hash rate
-     * @return blockTime Average block time in seconds
      */
-    function getBtcNetworkData() external view returns (
-        uint256 mempool,
-        uint256 blockHeight,
-        uint256 hashRate,
-        uint256 blockTime
+    function getBtcData() external view returns (
+        uint256 price,
+        uint256 blockHeight
     ) {
-        return (btcMempoolSize, btcBlockHeight, btcHashRate, btcAverageBlockTime);
+        return (btcPrice, btcBlockHeight);
     }
 } 

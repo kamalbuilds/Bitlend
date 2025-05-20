@@ -1,9 +1,4 @@
-// We require the Hardhat Runtime Environment explicitly here. This is optional
-// but useful for running the script in a standalone fashion through `node <script>`.
-//
-// You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
-// will compile your contracts, add the Hardhat Runtime Environment's members to the
-// global scope, and execute the script.
+// Deploy script for BitLend protocol using Hardhat
 const { ethers } = require("hardhat");
 require("dotenv").config();
 
@@ -13,9 +8,6 @@ const EXSAT_UTXO_MANAGEMENT_ADDRESS = process.env.EXSAT_UTXO_MANAGEMENT_ADDRESS 
 
 // Bridge Contract - handles BTC to XBTC conversions
 const EXSAT_BRIDGE_ADDRESS = process.env.EXSAT_BRIDGE_ADDRESS || "0x0000000000000000000000000000000000000000";
-
-// Custody Contract - (if needed by implementation)
-const EXSAT_CUSTODY_ADDRESS = process.env.EXSAT_CUSTODY_ADDRESS || "0x0000000000000000000000000000000000000000";
 
 // XBTC Token - wrapped Bitcoin token on exSat network
 const XBTC_TOKEN_ADDRESS = process.env.XBTC_TOKEN_ADDRESS || "0x0000000000000000000000000000000000000000";
@@ -35,6 +27,7 @@ async function main() {
   // Get the deployer account
   const [deployer] = await ethers.getSigners();
   console.log(`Deploying contracts with the account: ${deployer.address}`);
+  console.log(`Account balance: ${ethers.formatEther(await deployer.provider.getBalance(deployer.address))} ETH`);
 
   // Check critical environment variables
   let useMocks = false;
@@ -93,8 +86,8 @@ async function main() {
     console.log(`MockUSDC deployed to: ${usdcTokenAddress}`);
     
     // Initialize the mock tokens with test supply
-    await mockXBTC.mint(deployer.address, ethers.parseEther("100"));
-    await mockUSDC.mint(deployer.address, ethers.parseUnits("100000", 6));
+    await mockXBTC.mint(deployer.address, ethers.parseUnits("100", 8)); // Assuming 8 decimals for XBTC
+    await mockUSDC.mint(deployer.address, ethers.parseUnits("100000", 6)); // Assuming 6 decimals for USDC
     
     // Set the fee collector to the deployer if not specified
     feeCollectorAddress = deployer.address;
@@ -114,7 +107,8 @@ async function main() {
   const BitLendPriceOracle = await ethers.getContractFactory("BitLendPriceOracle");
   const priceOracle = await BitLendPriceOracle.deploy();
   await priceOracle.waitForDeployment();
-  console.log(`BitLendPriceOracle deployed to: ${await priceOracle.getAddress()}`);
+  const priceOracleAddress = await priceOracle.getAddress();
+  console.log(`BitLendPriceOracle deployed to: ${priceOracleAddress}`);
 
   // Deploy BitLendProofOfReserves
   console.log("Deploying BitLendProofOfReserves...");
@@ -125,7 +119,8 @@ async function main() {
     ethers.ZeroAddress // Will update with vault address after deployment
   );
   await proofOfReserves.waitForDeployment();
-  console.log(`BitLendProofOfReserves deployed to: ${await proofOfReserves.getAddress()}`);
+  const proofOfReservesAddress = await proofOfReserves.getAddress();
+  console.log(`BitLendProofOfReserves deployed to: ${proofOfReservesAddress}`);
 
   // Deploy BitLendVault
   console.log("Deploying BitLendVault...");
@@ -133,28 +128,31 @@ async function main() {
   const lendingVault = await BitLendVault.deploy(
     xbtcTokenAddress,
     usdcTokenAddress,
-    await priceOracle.getAddress(),
-    await proofOfReserves.getAddress(),
+    priceOracleAddress,
+    proofOfReservesAddress,
     bridgeAddress
   );
   await lendingVault.waitForDeployment();
-  console.log(`BitLendVault deployed to: ${await lendingVault.getAddress()}`);
+  const vaultAddress = await lendingVault.getAddress();
+  console.log(`BitLendVault deployed to: ${vaultAddress}`);
 
   // Update BitLendProofOfReserves with vault address
   console.log("Updating BitLendProofOfReserves with vault address...");
-  await proofOfReserves.updateVaultContract(await lendingVault.getAddress());
+  await proofOfReserves.updateVaultContract(vaultAddress);
+  console.log("BitLendProofOfReserves updated successfully");
 
   // Deploy BitLendLiquidator
   console.log("Deploying BitLendLiquidator...");
   const BitLendLiquidator = await ethers.getContractFactory("BitLendLiquidator");
   const liquidator = await BitLendLiquidator.deploy(
-    await lendingVault.getAddress(),
-    await priceOracle.getAddress(),
+    vaultAddress,
+    priceOracleAddress,
     xbtcTokenAddress,
     usdcTokenAddress
   );
   await liquidator.waitForDeployment();
-  console.log(`BitLendLiquidator deployed to: ${await liquidator.getAddress()}`);
+  const liquidatorAddress = await liquidator.getAddress();
+  console.log(`BitLendLiquidator deployed to: ${liquidatorAddress}`);
 
   // Deploy BitLendBridge
   console.log("Deploying BitLendBridge...");
@@ -165,44 +163,31 @@ async function main() {
     feeCollectorAddress
   );
   await bridge.waitForDeployment();
-  console.log(`BitLendBridge deployed to: ${await bridge.getAddress()}`);
+  const bridgeInterfaceAddress = await bridge.getAddress();
+  console.log(`BitLendBridge deployed to: ${bridgeInterfaceAddress}`);
 
   console.log("----------------------------------------------------");
   console.log("Deployment complete!");
   console.log("----------------------------------------------------");
   console.log("Deployed contract addresses:");
-  console.log(`- BitLendPriceOracle: ${await priceOracle.getAddress()}`);
-  console.log(`- BitLendProofOfReserves: ${await proofOfReserves.getAddress()}`);
-  console.log(`- BitLendVault: ${await lendingVault.getAddress()}`);
-  console.log(`- BitLendLiquidator: ${await liquidator.getAddress()}`);
-  console.log(`- BitLendBridge: ${await bridge.getAddress()}`);
+  console.log(`- BitLendPriceOracle: ${priceOracleAddress}`);
+  console.log(`- BitLendProofOfReserves: ${proofOfReservesAddress}`);
+  console.log(`- BitLendVault: ${vaultAddress}`);
+  console.log(`- BitLendLiquidator: ${liquidatorAddress}`);
+  console.log(`- BitLendBridge: ${bridgeInterfaceAddress}`);
   console.log("----------------------------------------------------");
 
-  // For verification on Etherscan
-  console.log("Waiting for block confirmations...");
-  // Wait for 5 block confirmations
-  await lendingVault.deploymentTransaction().wait(5);
-  console.log("Confirmed!");
-
-  // Output verification commands
-  console.log("Verify contracts with:");
-  console.log(`npx hardhat verify --network exsat-${EXSAT_NETWORK} ${await priceOracle.getAddress()}`);
-  console.log(`npx hardhat verify --network exsat-${EXSAT_NETWORK} ${await proofOfReserves.getAddress()} ${utxoManagementAddress} ${xbtcTokenAddress} ${await lendingVault.getAddress()}`);
-  console.log(`npx hardhat verify --network exsat-${EXSAT_NETWORK} ${await lendingVault.getAddress()} ${xbtcTokenAddress} ${usdcTokenAddress} ${await priceOracle.getAddress()} ${await proofOfReserves.getAddress()} ${bridgeAddress}`);
-  console.log(`npx hardhat verify --network exsat-${EXSAT_NETWORK} ${await liquidator.getAddress()} ${await lendingVault.getAddress()} ${await priceOracle.getAddress()} ${xbtcTokenAddress} ${usdcTokenAddress}`);
-  console.log(`npx hardhat verify --network exsat-${EXSAT_NETWORK} ${await bridge.getAddress()} ${xbtcTokenAddress} ${bridgeAddress} ${feeCollectorAddress}`);
-  
   // Save the deployment information to a file
   const fs = require('fs');
   const deploymentInfo = {
     network: EXSAT_NETWORK,
     timestamp: new Date().toISOString(),
     contracts: {
-      BitLendPriceOracle: await priceOracle.getAddress(),
-      BitLendProofOfReserves: await proofOfReserves.getAddress(),
-      BitLendVault: await lendingVault.getAddress(),
-      BitLendLiquidator: await liquidator.getAddress(),
-      BitLendBridge: await bridge.getAddress()
+      BitLendPriceOracle: priceOracleAddress,
+      BitLendProofOfReserves: proofOfReservesAddress,
+      BitLendVault: vaultAddress,
+      BitLendLiquidator: liquidatorAddress,
+      BitLendBridge: bridgeInterfaceAddress
     },
     externalContracts: {
       UTXOManagement: utxoManagementAddress,
@@ -215,6 +200,21 @@ async function main() {
   
   fs.writeFileSync('./deployment-info.json', JSON.stringify(deploymentInfo, null, 2));
   console.log("Deployment information saved to deployment-info.json");
+
+  // For verification on Etherscan
+  console.log("Waiting for block confirmations...");
+  // Wait for 5 block confirmations
+  await lendingVault.deploymentTransaction().wait(5);
+  console.log("Confirmed!");
+
+  // Output verification commands
+  const network = EXSAT_NETWORK === "mainnet" ? "exsatMainnet" : "exsatTestnet";
+  console.log(`Verify contracts with hardhat-verify on network: ${network}`);
+  console.log(`npx hardhat verify --network ${network} ${priceOracleAddress}`);
+  console.log(`npx hardhat verify --network ${network} ${proofOfReservesAddress} ${utxoManagementAddress} ${xbtcTokenAddress} ${vaultAddress}`);
+  console.log(`npx hardhat verify --network ${network} ${vaultAddress} ${xbtcTokenAddress} ${usdcTokenAddress} ${priceOracleAddress} ${proofOfReservesAddress} ${bridgeAddress}`);
+  console.log(`npx hardhat verify --network ${network} ${liquidatorAddress} ${vaultAddress} ${priceOracleAddress} ${xbtcTokenAddress} ${usdcTokenAddress}`);
+  console.log(`npx hardhat verify --network ${network} ${bridgeInterfaceAddress} ${xbtcTokenAddress} ${bridgeAddress} ${feeCollectorAddress}`);
 }
 
 // Execute the deployment function
