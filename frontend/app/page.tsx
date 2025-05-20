@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ConnectButton } from '@/components/ConnectButton';
+import { ConnectButton } from "thirdweb/react";
 import { Dashboard } from '@/components/Dashboard';
 import { BridgeModal } from '@/components/BridgeModal';
+import { client } from '@/lib/thirdweb';
 
 export default function Home() {
   const [connected, setConnected] = useState(false);
@@ -12,15 +13,6 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-900">
-      <header className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <img src="/images/logo.svg" alt="BitLend Logo" className="h-10 w-10" />
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">BitLend</h1>
-          </div>
-          <ConnectButton setConnected={setConnected} setAddress={setAddress} />
-        </div>
-      </header>
       
       <div className="py-10">
         <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
