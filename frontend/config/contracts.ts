@@ -1,3 +1,16 @@
+// Import addresses from the address.ts file
+import {
+  EXSAT_UTXO_MANAGEMENT_ADDRESS,
+  EXSAT_BRIDGE_ADDRESS,
+  XBTC_TOKEN_ADDRESS,
+  USDC_TOKEN_ADDRESS,
+  FEE_COLLECTOR_ADDRESS,
+  BITLEND_PRICE_ORACLE_ADDRESS,
+  BITLEND_PROOF_OF_RESOURCES_ADDRESS,
+  BITLEND_VAULT_ADDRESS,
+  BITLEND_BRIDGE_ADDRESS,
+} from "@/lib/adress";
+
 export type ContractAddresses = {
   trustId: string;
   trustIdFactory: string;
@@ -32,29 +45,40 @@ export default contracts;
 export const EXSAT_CHAIN_ID = 7200; // exSat Mainnet
 export const EXSAT_TESTNET_CHAIN_ID = 839999; // exSat Testnet 
 
-// Contract addresses - replace with actual deployed addresses
-export const CONTRACT_ADDRESSES = {
+// BitLend Protocol Contract Addresses (Real Deployed Addresses)
+export const BITLEND_CONTRACTS = {
+  // exSat contracts that BitLend integrates with
+  EXSAT_UTXO_MANAGEMENT: EXSAT_UTXO_MANAGEMENT_ADDRESS,
+  EXSAT_BRIDGE: EXSAT_BRIDGE_ADDRESS,
+  
+  // Token contracts
+  XBTC_TOKEN: XBTC_TOKEN_ADDRESS,
+  USDC_TOKEN: USDC_TOKEN_ADDRESS,
+  
+  // BitLend Protocol contracts
+  BITLEND_VAULT: BITLEND_VAULT_ADDRESS,
+  BITLEND_PRICE_ORACLE: BITLEND_PRICE_ORACLE_ADDRESS,
+  BITLEND_PROOF_OF_RESERVES: BITLEND_PROOF_OF_RESOURCES_ADDRESS,
+  BITLEND_BRIDGE: BITLEND_BRIDGE_ADDRESS,
+  
+  // Fee collector
+  FEE_COLLECTOR: FEE_COLLECTOR_ADDRESS,
+};
+
+// Type for contract addresses
+export type BitLendContractAddresses = typeof BITLEND_CONTRACTS;
+
+// Contract addresses - using real deployed addresses
+export const CONTRACT_ADDRESSES: Record<number, BitLendContractAddresses> = {
   // MAINNET
   [EXSAT_CHAIN_ID]: {
-    XBTC_TOKEN: "0x4aa4365da82ACD46e378A6f3c92a863f3e763d34", // Real XBTC token on exSat
-    XSAT_TOKEN: "0x8266f2fbc720012e5Ac038aD3dbb29d2d613c459", // Real XSAT token on exSat
-    USDC_TOKEN: "0x893AfC357b656EdD4F0c028670516F846FE89CFb", // Replace with actual USDC token on exSat
-    BITLEND_VAULT: "", // To be filled after deployment
-    BITLEND_PRICE_ORACLE: "", // To be filled after deployment
-    BITLEND_PROOF_OF_RESERVES: "", // To be filled after deployment
-    BITLEND_LIQUIDATOR: "", // To be filled after deployment
-    BITLEND_BRIDGE: "", // To be filled after deployment
+    ...BITLEND_CONTRACTS,
+    // Additional mainnet specific addresses can be added here
   },
-  // TESTNET
+  // TESTNET - Using same addresses for now, update if testnet has different addresses
   [EXSAT_TESTNET_CHAIN_ID]: {
-    XBTC_TOKEN: "0x4aa4365da82ACD46e378A6f3c92a863f3e763d34", // Replace with testnet address
-    XSAT_TOKEN: "0x8266f2fbc720012e5Ac038aD3dbb29d2d613c459", // Replace with testnet address
-    USDC_TOKEN: "0x893AfC357b656EdD4F0c028670516F846FE89CFb", // Replace with testnet address
-    BITLEND_VAULT: "", // To be filled after deployment
-    BITLEND_PRICE_ORACLE: "", // To be filled after deployment
-    BITLEND_PROOF_OF_RESERVES: "", // To be filled after deployment
-    BITLEND_LIQUIDATOR: "", // To be filled after deployment
-    BITLEND_BRIDGE: "", // To be filled after deployment
+    ...BITLEND_CONTRACTS,
+    // Update these if testnet has different contract addresses
   }
 };
 

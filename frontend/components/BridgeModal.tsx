@@ -71,7 +71,7 @@ export const BridgeModal = ({ isOpen, onClose }: BridgeModalProps) => {
       
       // For demo purposes, generate a mock BTC address
       const mockDepositAddress = "bc1q" + Math.random().toString(36).substring(2, 15) + 
-                                Math.random().toString(36).substring(2, 15);
+                                Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       
       setDepositAddress(mockDepositAddress);
       

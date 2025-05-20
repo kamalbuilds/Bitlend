@@ -4,6 +4,41 @@
 
 BitLend is a permissionless lending protocol built on exSat Network that allows Bitcoin holders to collateralize their BTC to borrow stablecoins or XSAT tokens. The platform leverages exSat's UTXO data synchronization and EVM compatibility to create a seamless, trustless lending experience with transparent proof of reserves.
 
+## 🔑 Key Features
+
+- **Bridge BTC to XBTC**: Seamlessly move assets between Bitcoin and exSat Network
+- **Collateralized Lending**: Use your XBTC as collateral to borrow stablecoins
+- **UTXO-Based Proof of Reserves**: Verify collateral directly using Bitcoin's UTXO data
+- **Liquidation Protection**: MEV-protected liquidations using Rebar Shield
+- **Market Analytics**: Real-time Bitcoin analytics powered by Rebar Data
+
+### Bitlend Demo Video
+
+https://github.com/user-attachments/assets/6df820a0-10a0-43dc-bfeb-4953769920a5
+
+
+## 🔧 Technical Innovations
+
+### UTXO-Based Proof of Reserves
+
+BitLend implements a transparent proof of reserves system using exSat's on-chain UTXO data. This allows users to:
+
+- Verify their BTC collateral is backed 1:1 with actual Bitcoin
+- Track UTXO confirmations for enhanced security
+- Prove solvency of the lending platform at any time
+
+Our system connects directly to exSat's UTXO Management Contract to access real-time Bitcoin data for verification.
+
+### Rebar Data Integration
+
+We leverage Rebar Data for enhanced market insights and security:
+
+- **MEV Protection**: Submit liquidation transactions through Rebar Shield's private mempool
+- **Market Analytics**: Display real-time Bitcoin network statistics
+- **Liquidation Risk Monitoring**: Alert users when their positions are at risk of liquidation
+- **Mempool Analysis**: Optimize transaction fees based on current network conditions
+
+
 ## Architecture Diagram
 
 ```mermaid
@@ -241,35 +276,6 @@ then Submit the verification results back to the EVM contract
 - **UTXO Verification UI**: Visual proof of Bitcoin collateral backing
 - **Rebar Analytics**: Real-time market data and liquidation risk assessment
 - **Bridge Interface**: Seamless BTC to XBTC conversion with verification
-
-## 🔑 Key Features
-
-- **Bridge BTC to XBTC**: Seamlessly move assets between Bitcoin and exSat Network
-- **Collateralized Lending**: Use your XBTC as collateral to borrow stablecoins
-- **UTXO-Based Proof of Reserves**: Verify collateral directly using Bitcoin's UTXO data
-- **Liquidation Protection**: MEV-protected liquidations using Rebar Shield
-- **Market Analytics**: Real-time Bitcoin analytics powered by Rebar Data
-
-## 🔧 Technical Innovations
-
-### UTXO-Based Proof of Reserves
-
-BitLend implements a transparent proof of reserves system using exSat's on-chain UTXO data. This allows users to:
-
-- Verify their BTC collateral is backed 1:1 with actual Bitcoin
-- Track UTXO confirmations for enhanced security
-- Prove solvency of the lending platform at any time
-
-Our system connects directly to exSat's UTXO Management Contract to access real-time Bitcoin data for verification.
-
-### Rebar Data Integration
-
-We leverage Rebar Data for enhanced market insights and security:
-
-- **MEV Protection**: Submit liquidation transactions through Rebar Shield's private mempool
-- **Market Analytics**: Display real-time Bitcoin network statistics
-- **Liquidation Risk Monitoring**: Alert users when their positions are at risk of liquidation
-- **Mempool Analysis**: Optimize transaction fees based on current network conditions
 
 ## 📋 Components
 
